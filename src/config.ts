@@ -23,6 +23,21 @@
  */
 export const CANONICAL_ORIGIN = "https://vaiven.owncompute.com";
 
+/**
+ * The sandbox origin the manual is written against, rewritten the same way.
+ *
+ * Missed on the first pass: `serveGuide` rewrote only the app origin, so the moment anyone
+ * documented `https://uc.vaiven.owncompute.com` — the host that serves untrusted
+ * model-authored HTML, and a natural thing to explain — a self-hoster's manual would point
+ * their readers at OUR production sandbox. No page names it today; this closes the door
+ * before someone opens it.
+ *
+ * Order matters at the call site: the sandbox origin must be replaced FIRST. It is not a
+ * substring of the app origin, but keeping the longer, more specific match first is the
+ * habit that stays correct if either host is ever renamed.
+ */
+export const CANONICAL_SANDBOX_ORIGIN = "https://uc.vaiven.owncompute.com";
+
 export interface Config {
 	db: string;
 	appHost: string;

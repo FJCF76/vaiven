@@ -1,7 +1,7 @@
 // The manual, the shell's assets, and the front door.
 
 import { join } from "node:path";
-import { CANONICAL_ORIGIN, type Config } from "../config.ts";
+import { CANONICAL_ORIGIN, CANONICAL_SANDBOX_ORIGIN, type Config } from "../config.ts";
 import { baseHeaders } from "../headers.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -13,6 +13,27 @@ const VERSION = (await Bun.file(join(ROOT, "VERSION")).text().catch(() => "unkno
  * A12: served as `text/markdown` so a fetching agent renders it rather than downloading
  * it, and so the file reads the same over HTTP as it does installed as a skill.
  */
+/**
+ * Rewrite both canonical origins in ONE pass.
+ *
+ * Two chained `replaceAll` calls look equivalent and are not: the second re-scans the text the
+ * first just inserted. Measured — sandbox host `vaiven.owncompute.com.evil.test` with app origin
+ * `http://localhost:8080` came back as `http://localhost:8080.evil.test`, a host that resolves
+ * nowhere. It takes an operator misconfiguration to reach, so it is a correctness landmine
+ * rather than an exploit, but a single pass costs nothing and removes the ordering question.
+ *
+ * Sandbox is listed first because regex alternation is leftmost-first and it is the longer,
+ * more specific match. A replacer FUNCTION, not a string, because a string replacement
+ * interprets `$&`, `` $` ``, `$'` and `$$` inside itself.
+ */
+export function rewriteOrigins(text: string, config: Config): string {
+	const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const pattern = new RegExp(`${escape(CANONICAL_SANDBOX_ORIGIN)}|${escape(CANONICAL_ORIGIN)}`, "g");
+	return text.replace(pattern, (match) =>
+		match === CANONICAL_SANDBOX_ORIGIN ? config.sandboxOrigin : config.appOrigin,
+	);
+}
+
 export async function serveGuide(config: Config, path: string): Promise<Response> {
 	// `/guide.md` and `/guide/<name>.md`. Nothing else, and no traversal.
 	const name = path === "/guide.md" ? "guide.md" : path.slice("/guide/".length);
@@ -36,7 +57,7 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	// A FUNCTION, not a string: a string replacement interprets $&, $', $` and $$ inside
 	// itself, so an origin carrying one of those would rewrite or truncate the manual.
 	// Config refuses such a host now; this is the second lock on the same door.
-	let markdown = (await file.text()).replaceAll(CANONICAL_ORIGIN, () => config.appOrigin);
+	let markdown = rewriteOrigins(await file.text(), config);
 
 	// The manual is distributed by COPY: `vaiven tenant create` prints an installer that
 	// curls it to ~/.claude/skills/vaiven/SKILL.md, and from then on the agent reads that
