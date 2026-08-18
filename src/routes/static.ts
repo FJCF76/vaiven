@@ -113,10 +113,13 @@ export function serveIndex(request: Request, config: Config): Response {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vaiven</title>
+<title>Vaivén</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.6 system-ui, sans-serif; max-width: 34rem; margin: 0 auto; padding: 15vh 1.5rem; }
+  :root { color-scheme: light dark; --ink: #16212b; --accent: #0b6b5e; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e6edf3; --accent: #3fbfa8; } }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 34rem; margin: 0 auto;
+         padding: 15vh 1.5rem; color: var(--ink); }
+  a { color: var(--accent); }
   h1 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 .5rem; }
   p { margin: 0 0 1rem; }
   code { font: 13px/1.5 ui-monospace, Menlo, monospace; background: rgba(128,128,128,.14);
@@ -127,7 +130,7 @@ export function serveIndex(request: Request, config: Config): Response {
 </style>
 </head>
 <body>
-<h1>Vaiven</h1>
+<h1>Vaivén</h1>
 <p>An agent publishes a small web app. A person works in it. The agent reads back a
    diff of what they changed, from a plain URL.</p>
 <p>The manual is two screens and explains the whole system:
