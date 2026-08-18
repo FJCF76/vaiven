@@ -140,6 +140,16 @@ then priority. Completed items move to the bottom.
 
 ## Documentation
 
+- **The README's test count is written by hand and has drifted three times.**
+  **Priority:** P3
+  Every time tests are added it becomes a lie, and it is the kind of lie that makes a reader
+  distrust the rest of the file. Generate it, drop the number, or assert it in a test.
+
+- **`gstack-version-bump` rewrites package.json with 2-space indentation.**
+  **Priority:** P3
+  The repo uses tabs, so a one-field version change arrives as a 42-line diff. Worked around
+  by hand this release; worth a `.gstack/package-json-path` pin or a formatting guard.
+
 - **The design doc does not record the architecture divergences.**
   **Priority:** P2
   Server-derived events replacing the shadow cache, server-side `_vid` stamping, a
