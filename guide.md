@@ -191,13 +191,13 @@ Every error tells you what to do next, in a `hint`, and links the relevant page:
 | `GET /api/docs/:id` | Read one. Add `?content=1` only if you need the HTML back; it can be 4 MB and it will crowd out everything else in your context. `?since=` and `?events=` work here too. |
 | `DELETE /api/docs/:id` | Delete it and everything under it. Tenant key only. Not recoverable. |
 | `PUT /api/docs/:id/state` | Write state. Needs `If-Match: "<version>"`. Merge on 409. |
-| `PUT /api/docs/:id/content` | Republish the app. Never touches `state`. |
+| `PUT /api/docs/:id/content` | Republish the app. Never touches `state`. Tenant key only. |
 | `POST /api/docs/:id/events` | Append a `done` or `note` without touching state or bumping the version. |
-| `POST /api/docs/:id/keys` | One named key per person, so the log says who did what. |
+| `POST /api/docs/:id/keys` | One named key per person, so the log says who did what. Tenant key only. |
 | `DELETE /api/docs/:id/keys/:kid` | Revoke one key. Tenant key only. |
 | `PUT /api/docs/:id/webhook` | Set or clear the push endpoint. Tenant key only. |
-| `GET /api/docs/:id/state/versions` | What history is still retained. |
-| `POST /api/docs/:id/state/restore` | Put an old version back. Send `If-Match` to be sure nothing changed since you looked. |
+| `GET /api/docs/:id/state/versions` | What history is still retained. Tenant key only. |
+| `POST /api/docs/:id/state/restore` | Put an old version back. Send `If-Match` to be sure nothing changed since you looked. Tenant key only. |
 | `GET /r/<read_key>.json` | The read URL. No headers, no key, no JS. |
 
 Notes worth having before you need them:
@@ -208,6 +208,7 @@ Notes worth having before you need them:
 - **Republishing `content` never touches `state`.** That is the point; do it freely.
 - **Elements in state arrays carry a `_vid` field.** Leave it alone and echo it back — it is
   how an edited row is told apart from a new one.
-- **Key management, deletion, the webhook and `?force=1` are tenant scope.** A document key
-  can read and write its own document and nothing else, which is what makes it safe to put
-  in a link.
+- **A document key can do three things: read, write `state`, append events.** Everything
+  else is tenant scope — republishing `content`, version history and restore, key management,
+  deletion, the webhook and `?force=1`. That narrowness is what makes a document key safe to
+  put in a link.

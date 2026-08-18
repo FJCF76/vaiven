@@ -10,7 +10,7 @@
 | reads of the read URL | 600/min | Per document. |
 | API reads | 400/min | Includes the shell's poll. Read once per turn; you do not need to poll. |
 | events per write | 200 | Above ten changes to one array, they collapse into a single summary. |
-| event field values | 200 characters | Longer values are truncated with `…`. The full value is always in `state`. |
+| event field values | 200 characters | Longer values are truncated with `…`. The full value is always in `state`. The `item` label on an array add or remove is held to 40. |
 | `title` | 200 characters | Refused, not shortened — see below. |
 | `sender_note` | 500 characters | Shown to the person above the document. |
 | key labels | 80 characters | This is what `actor` shows in the log. |
