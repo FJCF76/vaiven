@@ -84,6 +84,9 @@ Install the skill and its config in one line:
     chmod 600 ~/.claude/skills/vaiven/config.json
 
 Then tell the agent: read ~/.claude/skills/vaiven/SKILL.md and config.json.
+
+That first line is also the update: re-run it whenever Vaivén changes. The copy it writes
+carries the version it was taken at, so an agent can tell a stale manual from a current one.
 `);
 	process.exit(0);
 }
