@@ -623,13 +623,19 @@ addEventListener("visibilitychange", () => {
 // ---------------------------------------------------------------------------- poll
 
 let polling = true;
+/** Event-id cursor, echoed from the server's next_since. Not the document version. */
+let cursor = 0;
 
 async function poll() {
 	if (!polling) return;
 	if (document.visibilityState === "hidden") return;
 
 	try {
-		const response = await api(`?since=${doc?.version ?? 0}`, {
+		// `since` is an EVENT ID, not a version. Passing doc.version meant the cursor was a
+		// small number forever, so every 200 returned the document's whole event history
+		// and the "Claude updated …" toast re-announced edits from an hour ago. The server
+		// hands back next_since for exactly this; echo it.
+		const response = await api(`?since=${cursor}`, {
 			headers: doc ? { "if-none-match": `W/"${doc.version}.${doc.content_version}"` } : {},
 		});
 
@@ -649,12 +655,15 @@ async function poll() {
 		// A8: the composite ETag. Republishing content bumps content_version, not
 		// version, so polling on version alone would 304 forever and this page would keep
 		// running the old app.
+		// Announce first, then the reload offer, so that when a republish does both the
+		// offer is what remains: it is the one that needs an answer.
+		if (data.events?.length) announceRemote(data.events);
+		if (typeof data.next_since === "number") cursor = data.next_since;
+
 		if (doc && data.content_version !== doc.content_version) {
 			doc.content_version = data.content_version;
 			offerReload();
 		}
-
-		if (data.events?.length) announceRemote(data.events);
 
 		doc.title = data.title;
 		doc.version = data.version;
@@ -672,14 +681,18 @@ setInterval(poll, POLL_MS);
 function offerReload() {
 	// Always a click, never automatic: reloading the frame under someone mid-sentence is
 	// the same violence as a 409 that overwrites what they typed.
+	// Sticky. `observeServer` transitions the writer to "clean" in the same tick as this
+	// call, and the clean branch clears notices — so this offer was created and destroyed
+	// microseconds apart, on every republish, and nobody ever saw it.
 	showNotice(
 		"This document has been updated.",
 		"Reload it",
 		() => {
 			if (writer.snapshot().pending) writer.flush("before reload");
-			clearNotice();
+			clearNotice(true);
 			attachFrame();
 		},
+		true,
 		true,
 	);
 }
@@ -691,10 +704,15 @@ function announceRemote(events) {
 
 	const first = fromAgent[0].field ?? "the document";
 	const rest = fromAgent.length - 1;
+	// Sticky, for the same reason as offerReload: the poll hands the new state to the
+	// writer immediately after this, the writer reports "clean", and the clean branch
+	// cleared the toast in the same tick. A10 calls this the strongest moment in the
+	// product — the person seeing the agent respond — and it was invisible.
 	showNotice(
 		rest > 0 ? `Claude updated ${first} and ${rest} other field${rest > 1 ? "s" : ""}.` : `Claude updated ${first}.`,
 		"Dismiss",
-		clearNotice,
+		() => clearNotice(true),
+		true,
 		true,
 	);
 }
@@ -729,6 +747,10 @@ const SANDBOX_ORIGIN = document.documentElement.dataset.sandboxOrigin ?? "";
 
 	doc = await response.json();
 	latestState = doc.state ?? {};
+	// Start the cursor past everything that already happened. Without this the first poll
+	// re-reads the whole history and announces edits from last week as if they just
+	// arrived.
+	if (typeof doc.next_since === "number") cursor = doc.next_since;
 
 	// The key's own role decides what this view can do. `keys` is tenant-only, so a
 	// document key learns its role from whether writing is permitted at all.
