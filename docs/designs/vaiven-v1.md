@@ -785,6 +785,28 @@ state machine, the helper with read-only enforcement and error capture, A14 inje
 someone who has never seen the system, with no explanation. They must state unprompted what
 the document is, that their changes saved, and that their edits are recorded under a name.
 
+#### PHASE 4 RESULT — 2026-08-18, mechanically complete, human gate outstanding
+
+`writer.ts` shipped first as a pure module (13 unit tests, injected clock/fetch/transport)
+and the DOM followed. The full loop passes in a real browser against production: publish,
+type, **close the tab inside the debounce window**, and read one `edit` event carrying both
+values off a bare GET.
+
+`test/fields.html` and `test/fields.ts` execute A10's field-type table rather than
+describing it, and found three real defects on their first run:
+
+- A named `contenteditable` region could never have a stable key. `element.name` is a
+  property only form controls have, so the living-document case — the one the system is
+  named after — fell through to a structural `~` path.
+- Server-side seeding ignored the opt-outs the browser honours, so values from
+  `autocomplete="off"` and `data-vaiven-ignore` fields were written into the event log,
+  which is readable from a bearer URL, on the person's first edit.
+- `POST /api/docs` did not report `state_keys`, so an agent could not tell what publishing
+  had just seeded without a second read.
+
+**Still outstanding: the blocking human gate.** Nobody who has never seen the system has
+used it yet. That is the one Phase 4 requirement no test can stand in for.
+
 ### Phase 5 — CLI
 
 Including `tenant rotate-key|list|enable` and `doc list|show|delete`, one consistent verb set.
@@ -802,6 +824,29 @@ Remaining headers, Caddy log suppression for `/r/`, `wal_autocheckpoint` and
 `journal_size_limit` with a periodic `wal_checkpoint(TRUNCATE)`, backup cron with
 `PRAGMA integrity_check` on the copy, and a **rehearsed and timed restore drill**. Deferring
 replication is a decision; deferring the restore drill is an untested recovery path.
+
+#### PHASE 7 RESULT — 2026-08-18, complete, with two measured corrections
+
+Every item above is in place and each one was verified by running it rather than by reading
+the code that claims it.
+
+- **The backup was not a backup.** `backup.sh` had existed since this phase was written and
+  nothing ever ran it — no cron entry, no timer. It is a systemd timer now, every six
+  hours, running as the `vaiven` user with `IPAddressDeny=any` and `UMask=0077`. The
+  restore drill has been rehearsed against its output: 2 tenants, 12 documents, 51 events,
+  serving a 200 in **2023 ms**.
+- **`wal_checkpoint(TRUNCATE)` had no caller.** `wal_autocheckpoint` bounds the WAL under
+  normal traffic but a long-lived reader holds checkpoints off, and the file had reached
+  1.7 MB against a 4 KB database. The checkpoint now runs at the start of each backup, when
+  something already has the database open for maintenance: 135 KB database, empty WAL.
+- **The database and its backups were mode 0644.** The directory above them is 0750 so this
+  was not reachable, but a file holding every key hash and every document's state should not
+  depend on the directory to be private. Both are 0600.
+
+**`IPAddressAllow=any` silently defeats every `IPAddressDeny` entry**, including a `/32`.
+Measured on this box with a transient unit: the cloud metadata endpoint was reachable with
+that line present and unreachable without it. The unit file carries the measurement, because
+the failure mode is a security control that reads as present and enforces nothing.
 
 ## Verification
 
@@ -850,6 +895,34 @@ p95 under 200 ms.
 growth with a long-lived reader; 50 concurrent `GET /c/:id` on a 4 MB document with an RSS
 assertion; CLI writing while the server writes.
 
+#### VERIFICATION RESULT — 2026-08-18
+
+What actually runs, and against what:
+
+| Suite | What it covers | Where it runs |
+|---|---|---|
+| `bun test` (142) | events and coalescing, the writer state machine, auth, the SSRF address table, the limiter, seeding | in process |
+| `bun run typecheck` | the whole tree, strict, `noUncheckedIndexedAccess` | in process |
+| `test/negatives.ts` (28) | privilege escalation, cross-document and cross-tenant access, the host partition, the `/r/` oracle, preconditions | live HTTPS |
+| `test/invariants.ts` (10) | byte counters recomputed from rows across create, write, republish, restore, delete | live, against the server's own database |
+| `test/gate.ts` (42) | the four Phase 0 gates plus the self-navigation probe | live, real Chromium |
+| `test/loop.ts` | publish, type, close the tab, read the diff cold | live, real Chromium |
+| `test/fields.ts` (28) | A10's field-type table, including everything that must never be captured | live, real Chromium |
+
+**A typecheck is a test.** `bun build` transpiles without checking types and reported
+success on a file referencing an undefined constant; that shipped as a 500 on every
+successful state write, and only `test/negatives.ts` caught it. `tsconfig.json` exists for
+that reason.
+
+**Two verification items remain outstanding**, both requiring a person:
+
+- The Phase 4 human gate: someone who has never seen the system uses it, unprompted.
+- The cold-surface test on `guide.md`: a fresh agent with one URL and nothing installed.
+
+Not yet built: the chaos harness (T14) and the capacity measurement. The invariant checker
+that chaos would drive exists and passes; what is missing is the kill-and-restart loop
+around it.
+
 ## Open Questions
 
 - **Backup target.** A same-box `.backup` protects against a bad write, not against losing
@@ -863,24 +936,24 @@ assertion; CLI writing while the server writes.
 `jq` is not installed on this box, so the per-phase JSONL artifacts the aggregator reads
 were not written. This list is assembled by hand instead. P1 blocks Phase 1.
 
-- [ ] **T1 (P1, human: ~2h / CC: ~20m) — storage** — Apply A5 before any route is written.
-- [ ] **T2 (P1, human: ~1h / CC: ~10m) — host dispatch** — A6 partition, bind, 421, shell CSP.
-- [ ] **T3 (P1, human: ~1d / CC: ~45m) — writer.ts** — A7 as a pure, tested state machine.
-- [ ] **T4 (P1, human: ~30m / CC: ~5m) — read defaults** — A8 `?content=1`, cursor, composite ETag.
-- [ ] **T5 (P1, human: ~2h / CC: ~15m) — authorization** — A13 capability table + limiter.
-- [ ] **T6 (P1, human: ~30m / CC: ~5m) — iframe lifecycle** — A4 `onload` counter, no state to an unready frame.
-- [ ] **T7 (P2, human: ~1d / CC: ~1h) — shell chrome** — A10 layout, states, done, disclosure.
-- [ ] **T8 (P2, human: ~2h / CC: ~15m) — injection** — A14 HTMLRewriter, meta-CSP strip, compatMode assert.
-- [ ] **T9 (P2, human: ~2h / CC: ~15m) — agent observability** — A12 error capture, `POST /events`, URLs in responses.
-- [ ] **T10 (P2, human: ~1h / CC: ~10m) — injection containment** — A11 clamping, tuples, self-describing marker.
-- [ ] **T11 (P1, human: ~5h / CC: ~35m) — coalescing** — A1 shadow cache, one flush point, `_vid` stamping, identity-keyed array diffing, collapse rule, no contentless events. Raised to P1 by the E2 result.
-- [ ] **T12 (P2, human: ~2h / CC: ~15m) — errors** — A9 shape, missing codes, guide on 4xx.
-- [ ] **T13 (P3, human: ~2h / CC: ~15m) — CLI gaps** — rotate-key, list, enable, doc verbs.
-- [ ] **T14 (P3, human: ~1d / CC: ~30m) — chaos harness** — the invariant checker above.
-- [ ] **T15 (P3, human: ~2h / CC: ~15m) — local dev** — A12 localhost recipe, README, dev script.
-- [ ] **T16 (P1, human: ~1 morning / CC: ~1h) — Phase -1** — E1 vendor comparison, E2 bare loop with a real human. Gate on E2.
-- [ ] **T17 (P2, human: ~3h / CC: ~20m) — webhook** — A15 with SSRF guard, HMAC signature, retry, `webhook_failed` event.
-- [ ] **T18 (P2, human: ~1h / CC: ~10m) — link protocol** — helper intercepts anchors, `postMessage({type:'open'})`, shell confirms destination.
+- [x] **T1 (P1, human: ~2h / CC: ~20m) — storage** — Apply A5 before any route is written.
+- [x] **T2 (P1, human: ~1h / CC: ~10m) — host dispatch** — A6 partition, bind, 421, shell CSP.
+- [x] **T3 (P1, human: ~1d / CC: ~45m) — writer.ts** — A7 as a pure, tested state machine.
+- [x] **T4 (P1, human: ~30m / CC: ~5m) — read defaults** — A8 `?content=1`, cursor, composite ETag.
+- [x] **T5 (P1, human: ~2h / CC: ~15m) — authorization** — A13 capability table + limiter.
+- [x] **T6 (P1, human: ~30m / CC: ~5m) — iframe lifecycle** — A4 `onload` counter, no state to an unready frame.
+- [x] **T7 (P2, human: ~1d / CC: ~1h) — shell chrome** — A10 layout, states, done, disclosure.
+- [x] **T8 (P2, human: ~2h / CC: ~15m) — injection** — A14 HTMLRewriter, meta-CSP strip, compatMode assert.
+- [x] **T9 (P2, human: ~2h / CC: ~15m) — agent observability** — A12 error capture, `POST /events`, URLs in responses.
+- [x] **T10 (P2, human: ~1h / CC: ~10m) — injection containment** — A11 clamping, tuples, self-describing marker.
+- [x] **T11 (P1, human: ~5h / CC: ~35m) — coalescing** — A1 shadow cache, one flush point, `_vid` stamping, identity-keyed array diffing, collapse rule, no contentless events. Raised to P1 by the E2 result.
+- [x] **T12 (P2, human: ~2h / CC: ~15m) — errors** — A9 shape, missing codes, guide on 4xx.
+- [x] **T13 (P3, human: ~2h / CC: ~15m) — CLI gaps** — rotate-key, list, enable, doc verbs.
+- [ ] **T14 (P3, human: ~1d / CC: ~30m) — chaos harness** — the invariant checker above. NOT DONE: `test/invariants.ts` checks the invariants and passes, but nothing kills the server underneath it yet.
+- [x] **T15 (P3, human: ~2h / CC: ~15m) — local dev** — A12 localhost recipe, README, dev script.
+- [x] **T16 (P1, human: ~1 morning / CC: ~1h) — Phase -1** — E1 vendor comparison, E2 bare loop with a real human. Gate on E2.
+- [x] **T17 (P2, human: ~3h / CC: ~20m) — webhook** — A15 with SSRF guard, HMAC signature, retry, `webhook_failed` event.
+- [x] **T18 (P2, human: ~1h / CC: ~10m) — link protocol** — helper intercepts anchors, `postMessage({type:'open'})`, shell confirms destination.
 
 ## Decision Audit Trail
 

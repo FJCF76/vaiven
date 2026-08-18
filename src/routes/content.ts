@@ -19,23 +19,6 @@ const helperSource = await Bun.file(new URL("../shell/helper.js", import.meta.ur
 const helperFor = (config: Config): string =>
 	helperSource.replaceAll("__VAIVEN_APP_ORIGIN__", config.appOrigin);
 
-/** A3: warnings are computed once, at serve time, and stored on the document so the agent
- *  sees them on its next read without anything re-parsing a megabyte of HTML. */
-function recordWarnings(db: Database | null, id: string, warnings: unknown[]): void {
-	if (!db) return;
-	const encoded = JSON.stringify(warnings);
-	try {
-		// Only when it actually changed. Writing unconditionally turned every page load of
-		// a document that legitimately carries a warning into a database write.
-		const current = db
-			.query<{ warnings: string }, [string]>("SELECT warnings FROM docs WHERE id = ?")
-			.get(id);
-		if (!current || current.warnings === encoded) return;
-		db.query("UPDATE docs SET warnings = ? WHERE id = ?").run(encoded, id);
-	} catch {
-		// Advisory only; never fail a page render over a note about it.
-	}
-}
 
 // A 4 MB document is re-parsed and re-rewritten on every single load, and the capacity
 // target is 50 concurrent loads of exactly that. The prepared output is a pure function of
@@ -44,7 +27,6 @@ function recordWarnings(db: Database | null, id: string, warnings: unknown[]): v
 // written, and a cache that serves yesterday's fixture would be a debugging trap.
 interface Prepared {
 	html: string;
-	warnings: unknown[];
 	bytes: number;
 }
 
@@ -109,17 +91,21 @@ export async function serveContent(
 			});
 		}
 
+		// NOTHING here writes. This route is the one place in the system that serves
+		// model-authored HTML, on a host whose entire premise is that a compromise of what
+		// it serves reaches nothing — and it was performing an UPDATE on an arbitrary
+		// tenant's `docs` row, unauthenticated, for any document id anyone had ever been
+		// handed. The warnings it used to record are computed on the publish path instead,
+		// which is where A3 said to compute them.
 		const key = `${id}:${found.contentVersion}`;
 		const cacheable = db !== null && !isFixture(id);
 		let entry = cacheable ? cacheGet(key) : undefined;
 
 		if (!entry) {
-			const { html, warnings } = await prepareContent(found.html, helperFor(config));
-			entry = { html, warnings, bytes: Buffer.byteLength(html) };
+			const { html } = await prepareContent(found.html, helperFor(config));
+			entry = { html, bytes: Buffer.byteLength(html) };
 			if (cacheable) cachePut(key, entry);
 		}
-
-		recordWarnings(db, id, entry.warnings);
 
 		return new Response(entry.html, { headers: contentHeaders(config) });
 	} catch (error) {

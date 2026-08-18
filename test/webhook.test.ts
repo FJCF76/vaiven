@@ -35,6 +35,12 @@ describe("isForbiddenAddress", () => {
 		["::ffff:169.254.169.254", "v4-mapped metadata"],
 		["64:ff9b::127.0.0.1", "NAT64 loopback — the prefix version allowed this"],
 		["64:ff9b::a9fe:a9fe", "NAT64 metadata in hex — the prefix version allowed this"],
+		["::127.0.0.1", "v4-compatible loopback, deprecated but still parsed"],
+		["::7f00:1", "the same address in hex"],
+		["::169.254.169.254", "v4-compatible metadata"],
+		["::10.0.0.1", "v4-compatible private"],
+		["2002:7f00:1::1", "6to4 wrapping loopback"],
+		["2002:a9fe:a9fe::1", "6to4 wrapping the metadata endpoint"],
 		["2001:db8::1", "documentation"],
 		["not an address", "unparseable is refused, not allowed"],
 		["1.2.3", "short quad"],
@@ -58,6 +64,8 @@ describe("isForbiddenAddress", () => {
 		["2606:4700::1111", "public IPv6"],
 		["::ffff:8.8.8.8", "v4-mapped PUBLIC — the prefix version wrongly refused this"],
 		["64:ff9b::8.8.8.8", "NAT64 onto a public address"],
+		["::8.8.8.8", "v4-compatible onto a public address"],
+		["2002:0808:0808::1", "6to4 wrapping a public address"],
 	] as const;
 
 	for (const [address, why] of allowed) {

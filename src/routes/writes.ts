@@ -13,6 +13,7 @@ import { isValidId } from "../ids.ts";
 import { LIMITS, RATES, enforceRate, requireWithin } from "../quota.ts";
 import { queueWebhook, validateWebhookUrl } from "../webhook.ts";
 import { forgetPrepared } from "./content.ts";
+import { prepareContent } from "../inject.ts";
 import { extractSeedFields, seedStateFromContentSync } from "../seed.ts";
 import {
 	EVENT_RETENTION_MS,
@@ -24,11 +25,16 @@ import {
 	etagFor,
 	json,
 	loadDoc,
+	parseContentIfMatch,
 	parseIfMatch,
 	readJson,
 	requireCap,
 	type DocRow,
 } from "./api.ts";
+
+/** The warnings are about the AUTHOR's markup, not about the helper, so the helper's own
+ *  text is irrelevant to them and a placeholder keeps this off the hot path. */
+const HELPER_FOR_WARNINGS = "";
 
 // ------------------------------------------------------------------------ state write
 
@@ -379,28 +385,17 @@ export async function putContent(
 		});
 	}
 
-	const current = db
-		.query<{ content_version: number; bytes: number }, [string]>(
-			"SELECT content_version, bytes FROM doc_content WHERE doc_id = ?",
-		)
-		.get(id)!;
+	// A composite ETag names two numbers and this route is governed by the second. Reading
+	// the first meant a client echoing the ETag it was handed got a spurious 409 — or, when
+	// the two happened to be equal, a false pass.
+	const ifMatch = parseContentIfMatch(request);
 
-	const tenant = db
-		.query<{ used_bytes: number; max_bytes: number }, [string]>(
-			"SELECT used_bytes, max_bytes FROM tenants WHERE id = ?",
-		)
-		.get(doc.tenant_id)!;
-
-	const ifMatch = parseIfMatch(request);
-	if (ifMatch !== null && ifMatch !== current.content_version) {
-		fail("conflict", "The content changed since you read it.", {
-			hint: "Re-read the document, then retry with If-Match set to the content_version you just read.",
-			extra: { content_version: current.content_version },
-		});
-	}
-
-	// Parsing the HTML is async and must not happen inside the transaction.
+	// Parsing the HTML is async and must not happen inside the transaction. Both passes
+	// happen here: the fields to seed, and what injecting the helper had to alter. A3 says
+	// to compute the warnings at write time, and until now they were computed at SERVE
+	// time, which made the unauthenticated content host a writer.
 	const seedFields = await extractSeedFields(content);
+	const { warnings } = await prepareContent(content, HELPER_FOR_WARNINGS);
 	const now = Date.now();
 
 	const outcome = writeTx(db, () => {
@@ -413,6 +408,25 @@ export async function putContent(
 			)
 			.get(id);
 		if (!live) return { gone: true as const };
+
+		// These two were read outside the transaction, which is the same bug putState
+		// documents as fixed for itself: two concurrent publishes both saw the same
+		// `used_bytes` and both committed their delta, so deleting 4 MB twice subtracted
+		// 8 MB. Repeat and the tenant mints storage it is not using.
+		const current = db
+			.query<{ content_version: number; bytes: number }, [string]>(
+				"SELECT content_version, bytes FROM doc_content WHERE doc_id = ?",
+			)
+			.get(id)!;
+		const tenant = db
+			.query<{ used_bytes: number; max_bytes: number }, [string]>(
+				"SELECT used_bytes, max_bytes FROM tenants WHERE id = ?",
+			)
+			.get(doc.tenant_id)!;
+
+		if (ifMatch !== null && ifMatch !== current.content_version) {
+			return { conflict: true as const, contentVersion: current.content_version };
+		}
 
 		// A republish may introduce fields the previous version did not have. Their authored
 		// defaults become state; nothing already stored is touched -- that is what makes
@@ -430,12 +444,19 @@ export async function putContent(
 		const stateDelta = stateChanged ? seededBytes - live.state_bytes : 0;
 		const totalDelta = bytes - current.bytes + stateDelta;
 		if (totalDelta > 0 && tenant.used_bytes + totalDelta > tenant.max_bytes) {
-			return { quota: true as const, actual: tenant.used_bytes + totalDelta };
+			return { quota: true as const, actual: tenant.used_bytes + totalDelta, limit: tenant.max_bytes };
 		}
 
-		db.query(
-			"UPDATE doc_content SET content = ?, content_version = content_version + 1, bytes = ? WHERE doc_id = ?",
-		).run(content, bytes, id);
+		db.query("UPDATE docs SET warnings = ? WHERE id = ?").run(JSON.stringify(warnings), id);
+
+		// Compare-and-set, like the state write. The unconditional increment let two
+		// publishers both pass the precondition and the second silently win.
+		const changed = db
+			.query(
+				"UPDATE doc_content SET content = ?, content_version = content_version + 1, bytes = ? WHERE doc_id = ? AND content_version = ?",
+			)
+			.run(content, bytes, id, current.content_version).changes;
+		if (changed === 0) return { conflict: true as const, contentVersion: current.content_version };
 
 		if (stateChanged) {
 			// The version MUST advance. Changing state without it left an editor holding the
@@ -479,6 +500,12 @@ export async function putContent(
 			hint: "Nothing was stored.",
 		});
 	}
+	if ("conflict" in outcome) {
+		fail("conflict", "The content changed since you read it, so nothing was stored.", {
+			hint: "Re-read the document and retry with If-Match set to the content_version you just read. The ETag you were handed is `W/\"<version>.<content_version>\"` and either form is accepted.",
+			extra: { content_version: outcome.contentVersion },
+		});
+	}
 	if ("tooLarge" in outcome) {
 		fail("too_large", "Seeding the fields in that content would exceed the state limit.", {
 			hint: "Nothing was stored. The default values in your markup become state; reduce them or the number of fields.",
@@ -489,7 +516,7 @@ export async function putContent(
 	if ("quota" in outcome) {
 		fail("quota_exceeded", "This tenant is out of storage.", {
 			hint: "Nothing was stored. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
-			limit: tenant.max_bytes,
+			limit: outcome.limit,
 			actual: outcome.actual,
 		});
 	}
@@ -527,23 +554,32 @@ export async function postEvents(
 	}
 
 	const now = Date.now();
-	writeTx(db, () => {
+	const version = writeTx(db, () => {
+		// Stamped with the version as of the INSERT. Read outside, a state write landing in
+		// between filed the annotation under the previous version — harmless for the cursor,
+		// which is an event id, but it made the log say the note came before the change it
+		// was written about.
+		const current = db
+			.query<{ version: number }, [string]>("SELECT version FROM docs WHERE id = ?")
+			.get(id)?.version ?? doc.version;
+
 		const insert = db.query(
 			"INSERT INTO events (doc_id, version, actor, kind, note, payload, ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		);
 		for (const annotation of annotations) {
-			insert.run(id, doc.version, scope.actor, annotation.kind, annotation.note ?? null, annotation.payload ? String(annotation.payload) : null, now);
+			insert.run(id, current, scope.actor, annotation.kind, annotation.note ?? null, annotation.payload ? String(annotation.payload) : null, now);
 		}
 		// This route accepted ~256 KB per call at 120 calls/min per key, charged no quota
 		// and never pruned, so any collaborator could write the disk full at roughly
 		// 30 MB/minute. Retention only ran on a state write, which an attacker never has
 		// to perform.
 		pruneEvents(db, id, now);
+		return current;
 	});
 
 	// A12: deliberately does NOT bump `version` — that would burn a safety-net slot and
 	// invalidate every open client's ETag for something that changed no data.
-	return json({ version: doc.version, appended: annotations.length });
+	return json({ version, appended: annotations.length });
 }
 
 // ------------------------------------------------------------------------ key routes
@@ -667,13 +703,16 @@ export async function restoreVersion(
 	// rather than the only thing standing between the caller and data loss.
 	const ifMatch = parseIfMatch(request);
 
-	const snapshot = db
-		.query<{ state: string; bytes: number }, [string, number]>(
-			"SELECT state, bytes FROM state_versions WHERE doc_id = ? AND version = ?",
+	// Read outside only to produce a clean 404 before doing any work; the authoritative
+	// read happens inside the transaction, because the pruner can delete this row in the
+	// gap and a restore must not resurrect history the budget has already reclaimed.
+	const exists = db
+		.query<{ version: number }, [string, number]>(
+			"SELECT version FROM state_versions WHERE doc_id = ? AND version = ?",
 		)
 		.get(id, target);
 
-	if (!snapshot) {
+	if (!exists) {
 		fail("not_found", "No stored version with that number.", {
 			hint: "`GET /api/docs/:id/state/versions` lists what is still retained. History is pruned by age and size, so an old version may be gone.",
 			field: "version",
@@ -681,7 +720,14 @@ export async function restoreVersion(
 	}
 
 	const now = Date.now();
-	const version = writeTx(db, () => {
+	const outcome = writeTx(db, () => {
+		const snapshot = db
+			.query<{ state: string; bytes: number }, [string, number]>(
+				"SELECT state, bytes FROM state_versions WHERE doc_id = ? AND version = ?",
+			)
+			.get(id, target);
+		if (!snapshot) return { gone: true as const };
+
 		// Read what we are about to destroy, inside the transaction, so the snapshot and
 		// the counter delta both describe the row the UPDATE actually replaces.
 		const live = db
@@ -691,10 +737,28 @@ export async function restoreVersion(
 			.get(id)!;
 
 		if (ifMatch !== null && live.version !== ifMatch) {
-			fail("conflict", "The document changed since you read it, so it was not restored.", {
-				hint: "Re-read the document. If you still want this version, retry with If-Match set to the `version` returned here — or omit If-Match to restore unconditionally.",
-				extra: { version: live.version, state: safeParse(live.state) },
-			});
+			return { conflict: true as const, version: live.version, state: live.state };
+		}
+
+		// A restore is a write and costs storage like one: it replaces the state AND
+		// snapshots what it replaced. Without this check, restoring a large version in a
+		// loop drove `used_bytes` and `versions_bytes` past `max_bytes` unopposed — the one
+		// write path with no budget at all.
+		const tenant = db
+			.query<{ used_bytes: number; max_bytes: number }, [string]>(
+				"SELECT used_bytes, max_bytes FROM tenants WHERE id = ?",
+			)
+			.get(doc.tenant_id)!;
+		// What the restore adds to the tenant's live storage: the old state goes, the
+		// restored one takes its place. The snapshot it also writes is charged against the
+		// separate history budget, which the prune below enforces.
+		const delta = snapshot.bytes - live.state_bytes;
+		if (delta > 0 && tenant.used_bytes + delta > tenant.max_bytes) {
+			return {
+				quota: true as const,
+				limit: tenant.max_bytes,
+				actual: tenant.used_bytes + delta,
+			};
 		}
 
 		db.query("UPDATE docs SET state = ?, state_bytes = ?, version = version + 1, updated_at = ? WHERE id = ?").run(
@@ -729,10 +793,51 @@ export async function restoreVersion(
 			snapshot.bytes - live.state_bytes,
 			doc.tenant_id,
 		);
-		return next;
+
+		// Restoring adds a snapshot, so retention has to run here too or the budget only
+		// holds on the paths that happened to remember it.
+		const tenantHistory = db
+			.query<{ versions_bytes: number; max_versions_bytes: number }, [string]>(
+				"SELECT versions_bytes, max_versions_bytes FROM tenants WHERE id = ?",
+			)
+			.get(doc.tenant_id)!;
+		const freed = pruneVersions(
+			db,
+			id,
+			Math.max(0, tenantHistory.max_versions_bytes - tenantHistory.versions_bytes),
+		);
+		if (freed > 0) {
+			db.query("UPDATE docs SET versions_bytes = max(0, versions_bytes - ?) WHERE id = ?").run(freed, id);
+			db.query("UPDATE tenants SET versions_bytes = max(0, versions_bytes - ?) WHERE id = ?").run(
+				freed,
+				doc.tenant_id,
+			);
+		}
+
+		return { version: next };
 	});
 
-	return json({ version, restored_from: target });
+	if ("gone" in outcome) {
+		fail("not_found", "That stored version was pruned while the request was in flight.", {
+			hint: "Nothing changed. `GET /api/docs/:id/state/versions` lists what is still retained.",
+			field: "version",
+		});
+	}
+	if ("conflict" in outcome) {
+		fail("conflict", "The document changed since you read it, so it was not restored.", {
+			hint: "Re-read the document. If you still want this version, retry with If-Match set to the `version` returned here — or omit If-Match to restore unconditionally.",
+			extra: { version: outcome.version, state: safeParse(outcome.state ?? "{}") },
+		});
+	}
+	if ("quota" in outcome) {
+		fail("quota_exceeded", "This tenant is out of storage, so nothing was restored.", {
+			hint: "Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			limit: outcome.limit,
+			actual: outcome.actual,
+		});
+	}
+
+	return json({ version: outcome.version, restored_from: target });
 }
 
 // --------------------------------------------------------------------------- webhook
@@ -740,6 +845,10 @@ export async function restoreVersion(
 export async function setWebhook(db: Database, request: Request, scope: Scope, id: string): Promise<Response> {
 	requireCap(scope, "webhook.set", id);
 	loadDoc(db, scope, id);
+	// The only write route that had no budget. It performs a DNS lookup per call and its
+	// refusal reasons distinguish "does not resolve" from "resolves somewhere private",
+	// which is an unmetered oracle for internal names.
+	enforceRate(scope.kind === "tenant" ? `w:${scope.tenantId}` : `w:${scope.keyId}`, RATES.write, "writes");
 	const body = await readJson(request, 8192, "request");
 	const raw = typeof body.webhook === "string" ? body.webhook.trim() : "";
 

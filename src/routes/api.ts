@@ -7,7 +7,8 @@ import type { Database } from "bun:sqlite";
 import type { Config } from "../config.ts";
 import { bearerFrom, can, insertDocKey, resolve, touchKey, type Capability, type Scope } from "../auth.ts";
 import { byteLength, writeTx } from "../db.ts";
-import { safeParse, stampVids, clamp } from "../events.ts";
+import { fieldWarnings, safeParse, stampVids, clamp } from "../events.ts";
+import { prepareContent } from "../inject.ts";
 import { fail } from "../errors.ts";
 import { baseHeaders } from "../headers.ts";
 import { isValidId, newDocId } from "../ids.ts";
@@ -143,10 +144,15 @@ function loadDoc(db: Database, scope: Scope, id: string): DocRow {
 	}
 	// Tenant scope is bounded to its own documents here; document scope was already
 	// bounded by requireCap.
+	// A doc-scoped read used to have no predicate at all, on the reasoning that requireCap
+	// had already compared the id. That holds for every current caller, but `can()` returns
+	// true for `doc.read` when the docId argument is omitted — so one future call site that
+	// forgets it turns this into a cross-tenant read. The scope carries the id it is bound
+	// to; use it.
 	const row =
 		scope.kind === "tenant"
 			? db.query<DocRow, [string, string]>("SELECT * FROM docs WHERE id = ? AND tenant_id = ?").get(id, scope.tenantId)
-			: db.query<DocRow, [string]>("SELECT * FROM docs WHERE id = ?").get(id);
+			: db.query<DocRow, [string, string]>("SELECT * FROM docs WHERE id = ? AND id = ?").get(id, scope.docId);
 
 	if (!row) {
 		fail("not_found", "No document with that id.", {
@@ -163,6 +169,23 @@ function loadDoc(db: Database, scope: Scope, id: string): DocRow {
  *  republishing is the central loop. */
 export function etagFor(version: number, contentVersion: number): string {
 	return `W/"${version}.${contentVersion}"`;
+}
+
+/**
+ * The content routes are governed by `content_version`, the SECOND number in the composite
+ * ETag. `parseIfMatch` returns the first, which is the state version — so a client echoing
+ * the ETag it was given was comparing the wrong number against the wrong column.
+ *
+ * Both forms are accepted: the composite it was handed, or a bare content_version.
+ */
+export function parseContentIfMatch(request: Request): number | null {
+	const raw = request.headers.get("if-match");
+	if (!raw) return null;
+	const cleaned = raw.trim().replace(/^W\//i, "").replace(/^"|"$/g, "");
+	if (cleaned === "*") return null;
+	const parts = cleaned.split(".");
+	const version = Number(parts.length > 1 ? parts[1] : parts[0]);
+	return Number.isFinite(version) ? version : null;
 }
 
 function parseIfMatch(request: Request): number | null {
@@ -189,17 +212,6 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 		)
 		.get(scope.tenantId)!;
 
-	const count = db
-		.query<{ n: number }, [string]>("SELECT count(*) AS n FROM docs WHERE tenant_id = ?")
-		.get(scope.tenantId)!.n;
-	if (count >= tenant.max_docs) {
-		fail("quota_exceeded", "This tenant is at its document limit.", {
-			hint: "Delete a document you no longer need with `DELETE /api/docs/:id`, or raise the limit with `vaiven tenant set`.",
-			limit: tenant.max_docs,
-			actual: count,
-		});
-	}
-
 	const content = typeof body.content === "string" ? body.content : "";
 	const contentBytes = byteLength(content);
 	if (contentBytes > LIMITS.contentBytes) {
@@ -223,13 +235,9 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 		});
 	}
 
-	if (tenant.used_bytes + contentBytes + stateBytes > tenant.max_bytes) {
-		fail("quota_exceeded", "This tenant is out of storage.", {
-			hint: "Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
-			limit: tenant.max_bytes,
-			actual: tenant.used_bytes + contentBytes + stateBytes,
-		});
-	}
+	// A3: what injecting the helper had to alter is recorded here, on the write path,
+	// rather than by the unauthenticated route that serves the content.
+	const { warnings } = content ? await prepareContent(content, "") : { warnings: [] };
 
 	// A13: a document born with a read key is born with a permanent public URL. The
 	// tenant default is off; the request may ask for one explicitly.
@@ -247,11 +255,33 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 	}
 	const webhookSecret = webhook ? crypto.randomUUID().replaceAll("-", "") : null;
 
-	const keys = writeTx(db, () => {
+	const outcome = writeTx(db, () => {
+		// Both quota checks live in here. Read outside, every concurrent create saw the
+		// same count and the same `used_bytes`, so N simultaneous requests all passed and
+		// all committed — overshooting both limits by N-1. The two `await`s above (parsing
+		// the markup, and a DNS lookup for the webhook) make that window wide, not narrow.
+		const live = db
+			.query<{ max_docs: number; used_bytes: number; max_bytes: number }, [string]>(
+				"SELECT max_docs, used_bytes, max_bytes FROM tenants WHERE id = ?",
+			)
+			.get(scope.tenantId)!;
+		const count = db
+			.query<{ n: number }, [string]>("SELECT count(*) AS n FROM docs WHERE tenant_id = ?")
+			.get(scope.tenantId)!.n;
+
+		if (count >= live.max_docs) return { docLimit: true as const, limit: live.max_docs, actual: count };
+		if (live.used_bytes + contentBytes + stateBytes > live.max_bytes) {
+			return {
+				quota: true as const,
+				limit: live.max_bytes,
+				actual: live.used_bytes + contentBytes + stateBytes,
+			};
+		}
+
 		db.query(
 			`INSERT INTO docs (id, tenant_id, title, sender_note, state, state_bytes, version,
-			                   warnings, webhook_url, webhook_secret, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, 0, '[]', ?, ?, ?, ?)`,
+			                   warnings, field_warnings, webhook_url, webhook_secret, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
 		).run(
 			id,
 			scope.tenantId,
@@ -259,6 +289,8 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 			requireWithin(body.sender_note, LIMITS.senderNoteChars, "sender_note", "sender note"),
 			stateText,
 			stateBytes,
+			JSON.stringify(warnings),
+			JSON.stringify(fieldWarnings(state)),
 			webhook || null,
 			webhookSecret,
 			now,
@@ -282,9 +314,25 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 			const reader = insertDocKey(db, id, "reader", "read");
 			minted.push({ id: reader.id, label: reader.label, role: reader.role, key: reader.plaintext });
 		}
-		return minted;
+		return { keys: minted };
 	});
 
+	if ("docLimit" in outcome) {
+		fail("quota_exceeded", "This tenant is at its document limit.", {
+			hint: "Nothing was created. Delete a document you no longer need with `DELETE /api/docs/:id`, or raise the limit with `vaiven tenant set`.",
+			limit: outcome.limit,
+			actual: outcome.actual,
+		});
+	}
+	if ("quota" in outcome) {
+		fail("quota_exceeded", "This tenant is out of storage.", {
+			hint: "Nothing was created. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			limit: outcome.limit,
+			actual: outcome.actual,
+		});
+	}
+
+	const keys = outcome.keys;
 	const write = keys.find((k) => k.role === "write")?.key;
 	const read = keys.find((k) => k.role === "read")?.key;
 
@@ -414,13 +462,18 @@ function readDoc(db: Database, request: Request, url: URL, config: Config, scope
 			state: safeParse(doc.state),
 			events,
 			next_since: nextSince,
+			// A8 made `content` opt-in and bounded the event list, and left `state` — up to
+			// 1 MB of other people's text — with no bound and no size hint at all. It cannot
+			// be clamped without corrupting the thing the product exists to deliver, so the
+			// honest move is to say how large it is.
+			state_bytes: doc.state_bytes,
 			warnings: mergeWarnings(doc.warnings, doc.field_warnings),
 			// The shell needs its own role before it renders anything: /c/:id needs no
 			// auth, so without this a read key would paint a fully interactive document
 			// whose every keystroke is discarded (A10).
 			mode: scope.kind === "tenant" ? "write" : scope.role === "write" ? "write" : "read",
 			actor_label: scope.kind === "tenant" ? "Claude" : scope.label,
-			...(scope.kind === "tenant" ? { keys: listKeys(db, id) } : {}),
+			...(can(scope, "keys.list", id) ? { keys: listKeys(db, id) } : {}),
 			...docUrls(config, id),
 			untrusted: UNTRUSTED,
 		},

@@ -43,6 +43,12 @@ export function migrate(db: Database): void {
 	const columns = new Set(
 		db.query<{ name: string }, []>("PRAGMA table_info(docs)").all().map((row) => row.name),
 	);
+	// One-off, and idempotent because a hash contains neither a dot nor a colon: rows
+	// written before `seen_ips` held hashes still hold raw addresses. The column exists to
+	// count distinct sources, never to keep them, so the old values are dropped rather than
+	// migrated.
+	db.exec("UPDATE doc_keys SET seen_ips = '[]' WHERE seen_ips LIKE '%.%' OR seen_ips LIKE '%:%'");
+
 	for (const [name, definition] of [
 		["last_request_id", "TEXT"],
 		["last_request_version", "INTEGER"],

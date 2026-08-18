@@ -79,6 +79,7 @@ export function readByKey(
 					sender_note: string;
 					state: string;
 					version: number;
+					state_bytes: number;
 					warnings: string;
 					field_warnings: string;
 					content_version: number;
@@ -87,7 +88,7 @@ export function readByKey(
 			>(
 				`SELECT k.id AS key_id, k.doc_id, k.role, k.revoked_at,
 				        t.disabled AS tenant_disabled,
-				        d.title, d.sender_note, d.state, d.version, d.warnings, d.field_warnings,
+				        d.title, d.sender_note, d.state, d.state_bytes, d.version, d.warnings, d.field_warnings,
 				        c.content_version
 				   FROM doc_keys k
 				   JOIN docs         d ON d.id = k.doc_id
@@ -124,6 +125,7 @@ export function readByKey(
 			// between. It is an event id, so annotations stored at an unchanged version are
 			// still reachable and a truncated page resumes rather than skipping.
 			next_since: nextSince,
+			state_bytes: row.state_bytes,
 			warnings: mergeWarnings(row.warnings, row.field_warnings),
 			// A11: self-describing rather than a bare boolean, because this route is the
 			// one most likely to be read by something that never saw the guide.

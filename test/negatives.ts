@@ -157,6 +157,48 @@ console.log("\nINPUT — malformed and hostile bodies");
 	check(!forged, "a forged edit event is refused, so the log cannot be written by the page");
 }
 
+console.log("\nSANDBOX HOST — serves, never writes");
+{
+	// The content host used to record injection warnings on the docs row, which made an
+	// unauthenticated GET on a host that is supposed to touch nothing into an UPDATE on an
+	// arbitrary tenant's row.
+	const before = await (await fetch(`${base}/api/docs/${B.id}`, asTenant())).json();
+	await fetch(`${config.sandboxOrigin}/c/${B.id}`);
+	await new Promise((resolve) => setTimeout(resolve, 300));
+	const after = await (await fetch(`${base}/api/docs/${B.id}`, asTenant())).json();
+
+	check(
+		before.updated_at === after.updated_at && before.version === after.version,
+		"loading the content changes nothing about the document",
+		`${before.updated_at} -> ${after.updated_at}`,
+	);
+	check(
+		JSON.stringify(before.warnings) === JSON.stringify(after.warnings),
+		"…including the warnings, which are computed when content is published",
+	);
+}
+
+console.log("\nCONTENT PRECONDITIONS");
+{
+	// The ETag names two numbers and the content routes are governed by the second. Echoing
+	// the ETag verbatim is the documented pattern and used to compare the wrong one.
+	const head = await fetch(`${base}/api/docs/${B.id}`, asTenant());
+	const etag = head.headers.get("etag")!;
+	const body = "<!doctype html><html><head></head><body><input name=\"z\" value=\"1\"></body></html>";
+
+	const accepted = await fetch(
+		`${base}/api/docs/${B.id}/content`,
+		asTenant({ method: "PUT", headers: { "content-type": "text/html", "if-match": etag }, body }),
+	);
+	check(accepted.status === 200, "the ETag the server handed out is accepted on a content write", `${etag} -> ${accepted.status}`);
+
+	const stale = await fetch(
+		`${base}/api/docs/${B.id}/content`,
+		asTenant({ method: "PUT", headers: { "content-type": "text/html", "if-match": '"0.0"' }, body }),
+	);
+	check(stale.status === 409, "a stale content ETag conflicts rather than clobbering", String(stale.status));
+}
+
 console.log("\nPRECONDITIONS");
 {
 	check(
