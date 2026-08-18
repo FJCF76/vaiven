@@ -2,6 +2,46 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.3.0] - 2026-08-18
+
+Every URL in the manual is now complete and usable as it stands.
+
+### Fixed
+
+- **The manual stored URLs as `$HOST/api/docs`.** The served bytes were correct — the server
+  substituted at request time — but the file is not a build input. It is the artifact people
+  actually meet: on GitHub, through `raw.githubusercontent.com`, and in every clone. Through
+  all three it told the reader to call `$HOST/api/docs`, and in a shell an unset variable
+  expands to empty, so a copy-pasted command silently became `curl -s /api/docs`. Worse,
+  `$HOST/guide/errors.md` is not a URL at all, so an agent's fetch tool could not open it —
+  which happened in production. The manual is written against the canonical origin now and
+  rewritten to whichever origin the instance serves, so the stored file is correct standalone
+  and the failure mode inverts: bypass the substitution and you get a URL that works.
+- **Every remaining `$` placeholder is gone.** `$KEY`, `$DOC`, `$READ_URL`, `$LAST` and
+  `$OLD_KEY_ID` are literal now, with a legend table naming where each value comes from, so
+  nothing in the manual can be mistaken for shell syntax. A blank left unfilled returns a
+  clean 401 or 404 with a hint rather than a malformed request.
+- **The version stamp made its own URL unfetchable.** It ended `…/guide.md*`, flush against
+  the closing markdown emphasis. A renderer closes the emphasis; a regex URL extractor takes
+  the `*` and 404s — on the single address whose entire purpose is to be re-fetched.
+- **A sample error body in `guide/errors.md` elided the origin** as `…/guide/errors.md`. Real
+  responses carry an absolute `guide` URL, so the sample misrepresented the API.
+- **`guide/errors.md` used `k_YOUR_OLD_KEY_ID` where the legend defined `k_YOUR_KEY_ID`.**
+
+### Added
+
+- Four regression guards over every served guide page, each mutation-checked in both
+  directions: no shell placeholder on disk, no relative pointer to another guide page, no URL
+  flush against a markdown emphasis marker, and every blank an example asks you to fill in
+  must appear in the legend. The last one caught a real inconsistency on its first run.
+
+### Security
+
+- The manual is installed verbatim as `~/.claude/skills/vaiven/SKILL.md`, so it is executable
+  prompt code rather than documentation. With the key now shown literally in examples, it
+  carries an explicit instruction to keep the key in an environment variable — a key typed
+  inline survives in shell history, in scrollback and in any saved script.
+
 ## [0.2.2.0] - 2026-08-18
 
 One URL is now enough. An agent handed only `https://vaiven.owncompute.com` can reach the
