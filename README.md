@@ -82,11 +82,11 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 212 unit tests, no server needed
+bun test          # 233 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
-Five more suites run against a **live** server, because the things they check (headers, the
+Six more suites run against a **live** server, because the things they check (headers, the
 proxy, the certificate, cross-origin behaviour, real concurrency) cannot be proven by calling
 functions. Each needs the same `VAIVEN_*` environment the server itself is running with, plus
 `VAIVEN_TENANT_KEY` from `tenant create`. `gate.ts` is the exception: it runs without a key
@@ -99,6 +99,7 @@ and skips only the check that has to mint a document.
 | `bun run test/loop.ts` | The whole loop end to end: publish, edit in a browser, read back the diff. |
 | `bun run test/fields.ts` | Every field type captures, restores and diffs correctly. |
 | `bun run test/invariants.ts` | The database invariants hold under load. Needs the server's `VAIVEN_DB`. |
+| `bun run test/repaint.ts` | The worked example **in `guide.md`** survives a real cursor. It reads the example out of the manual, publishes it, and types one character at a time. Two defects shipped in that example because the earlier fixture used `fill()`, which sets a value in one shot and never exercises the keystroke path. |
 
 With `bun run dev` already serving and the exports above still in your shell:
 
@@ -126,6 +127,29 @@ the production-shaped value in the table.
 | `VAIVEN_ALLOW_PUBLIC_BIND` | unset | Set to `1` to permit a wildcard bind (`0.0.0.0`, `::`). Only those two are guarded; a specific public address is accepted without it. |
 | `VAIVEN_TRUSTED_PROXY_HOPS` | `1` | How many proxies to count back through for the client IP. `0`-`4`. |
 
+### The manual is rewritten for your origin
+
+`guide.md` and the pages under `guide/` are written against the canonical origin,
+`https://vaiven.owncompute.com`. That is deliberate, and it matters if you self-host: the file
+you read in this repo is a **working manual**, not a template. Every URL in it is complete and
+fetchable as it stands.
+
+When your server serves those pages it substitutes the canonical origin for whatever
+`VAIVEN_APP_HOST` and `VAIVEN_SANDBOX_HOST` resolve to, so your readers get *your* host. On the
+canonical instance the substitution is a no-op.
+
+Two consequences worth knowing:
+
+- **Do not edit the origin out of `guide.md`.** You would be fighting the substitution and
+  carrying a merge conflict forever. Set the environment variables instead.
+- **Read the manual from your own server, not from the repo**, if you want to see exactly what
+  your agents receive: `curl https://your-host/guide.md`.
+
+The failure mode is deliberately safe. If the substitution is ever bypassed, a reader gets the
+canonical URL, which works, rather than a broken path. That is why the file stores a real URL
+instead of a placeholder like `$HOST` — a placeholder is not a URL, an agent's fetch tool cannot
+open it, and in a shell an unset variable silently expands to nothing.
+
 ## Deploying
 
 `deploy/` holds everything the production host needs, and each file explains itself:
@@ -146,9 +170,10 @@ the production-shaped value in the table.
 | File | For whom |
 |---|---|
 | [`guide.md`](guide.md) | The agent-facing manual. Served live at `/guide.md`, so an agent can bootstrap from one fetch. |
-| [`guide/app-mode.md`](guide/app-mode.md) | When the person can add, remove or reorder rows. |
+| [`guide/app-mode.md`](guide/app-mode.md) | Depth on app mode, for when the person can add, remove or reorder rows. `guide.md` already covers this well enough to build from; this page is the longer version. |
 | [`guide/errors.md`](guide/errors.md) | Every error code and what to do about it. |
 | [`guide/limits.md`](guide/limits.md) | Size limits, quotas and rate limits. |
 | [`docs/designs/vaiven-v1.md`](docs/designs/vaiven-v1.md) | The reviewed design doc: why it is built this way, and the amendments layered on the spec. |
+| [`docs/designs/well-formed-urls.md`](docs/designs/well-formed-urls.md) | Why the manual stores real URLs rather than a placeholder, and how the serve-time rewrite works. |
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, per version. |
 | [`TODOS.md`](TODOS.md) | What is known to be missing, with priorities. |

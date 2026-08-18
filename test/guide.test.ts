@@ -9,8 +9,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Config } from "../src/config.ts";
-import { serveGuide } from "../src/routes/static.ts";
-import { CANONICAL_ORIGIN } from "../src/config.ts";
+import { rewriteOrigins, serveGuide } from "../src/routes/static.ts";
+import { CANONICAL_ORIGIN, CANONICAL_SANDBOX_ORIGIN } from "../src/config.ts";
 import { STATUS } from "../src/errors.ts";
 import { CLAMP, COLLAPSE_AT } from "../src/events.ts";
 import { LIMITS, RATES } from "../src/quota.ts";
@@ -19,8 +19,15 @@ const guide = await Bun.file(new URL("../guide.md", import.meta.url)).text();
 const helper = await Bun.file(new URL("../src/shell/helper.js", import.meta.url)).text();
 
 /** Every page the server will serve, not just the front one. The sub-pages are where the
- *  API is documented in depth, so they are where an invented signature would hide. */
-const SUB_PAGES = ["app-mode.md", "errors.md", "limits.md"];
+ *  API is documented in depth, so they are where an invented signature would hide.
+ *
+ *  READ FROM DISK, never hardcoded. `serveGuide` serves any `guide/<name>.md` matching its
+ *  own `/^[a-z0-9-]+\.md$/` guard, so a hardcoded list silently stops covering the moment
+ *  someone adds a page. Measured: a `guide/zz-probe.md` carrying `$HOST`, a relative link
+ *  AND a URL glued to a `*` was served with HTTP 200 while all 38 tests passed. The guards
+ *  below are only worth what this list covers. */
+const SUB_PAGES = (await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: new URL("../guide", import.meta.url).pathname }))).sort();
+if (SUB_PAGES.length === 0) throw new Error("No guide sub-pages found — the guards below would pass vacuously.");
 const pageText: Record<string, string> = { "/guide.md": guide };
 for (const name of SUB_PAGES) {
 	pageText[`/guide/${name}`] = await Bun.file(new URL(`../guide/${name}`, import.meta.url)).text();
@@ -69,7 +76,10 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 	test("no page on disk contains a shell placeholder", () => {
 		// The regression guard. `$HOST` came back once already; this is what stops it.
 		for (const [path, text] of Object.entries(pageText)) {
-			const found = [...text.matchAll(/\$[A-Z_]{2,}/g)].map((m) => m[0]);
+			// `\$\{HOST\}` and `\$Host` slipped past the first version of this guard, which only
+			// matched `\$[A-Z_]{2,}` — and `\$\{HOST\}` is the MORE idiomatic shell form, so it was
+			// the likelier way the bug came back. Any `\$` followed by a name or a brace now.
+			const found = [...text.matchAll(/\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/g)].map((m) => m[0]);
 			expect({ path, found }).toEqual({ path, found: [] });
 		}
 	});
@@ -103,12 +113,66 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		}
 	});
 
+	test("the canonical origin is only ever followed by a path", () => {
+		// replaceAll matches a bare substring, so `…owncompute.com:443/x` or
+		// `…owncompute.com.example` would be rewritten from the MIDDLE, producing a
+		// double-port or otherwise broken URL for anyone not on the canonical origin.
+		// Nothing in the manual does this today; this keeps it that way.
+		for (const [path, text] of Object.entries(pageText)) {
+			const bad = [...text.matchAll(new RegExp(`${CANONICAL_ORIGIN}([^/\\s\`"'.,)\\]]|\\.[a-z])`, "g"))].map((m) => m[0]);
+			expect({ path, bad }).toEqual({ path, bad: [] });
+		}
+	});
+
+	test("the sandbox origin is rewritten too, not left pointing at production", async () => {
+		// serveGuide rewrote only the app origin at first. The day anyone documents the
+		// sandbox host, a self-hoster's manual would send their readers to OUR sandbox.
+		const served = await serve("/guide.md");
+		expect(served).not.toContain(CANONICAL_SANDBOX_ORIGIN);
+		const rewritten = `${CANONICAL_SANDBOX_ORIGIN}/c/d_x`.replaceAll(CANONICAL_SANDBOX_ORIGIN, () => "https://uc.vaiven.example");
+		expect(rewritten).toBe("https://uc.vaiven.example/c/d_x");
+	});
+
+	test("both origins are rewritten in one pass, so neither can corrupt the other", () => {
+		// Tested against rewriteOrigins directly, NOT through serveGuide: guide.md never
+		// mentions the sandbox origin, so serving it cannot exercise this path at all. The
+		// first version of this test went through serveGuide and passed against the BROKEN
+		// two-pass implementation — a test that tests nothing.
+		//
+		// Two chained replaceAll calls re-scan what the first inserted. Measured before the
+		// fix: sandbox host `vaiven.owncompute.com.evil.test` with app origin
+		// `http://localhost:8080` came back as `http://localhost:8080.evil.test`, a host that
+		// resolves nowhere. Reaching it needs an operator misconfiguration, so it is a
+		// correctness landmine rather than an exploit — but a single pass settles it.
+		const hostile = {
+			appOrigin: "http://localhost:8080",
+			sandboxOrigin: `${CANONICAL_ORIGIN}.evil.test`,
+		} as unknown as Config;
+		const source = `app=${CANONICAL_ORIGIN}/api sandbox=${CANONICAL_SANDBOX_ORIGIN}/c/d_x`;
+		const out = rewriteOrigins(source, hostile);
+		expect(out).toBe(`app=http://localhost:8080/api sandbox=${CANONICAL_ORIGIN}.evil.test/c/d_x`);
+	});
+
+	test("the ordinary origins round-trip through the same one-pass rewrite", () => {
+		const local = {
+			appOrigin: "http://vaiven.localhost:8080",
+			sandboxOrigin: "http://uc.vaiven.localhost:8080",
+		} as unknown as Config;
+		const source = `${CANONICAL_ORIGIN}/api and ${CANONICAL_SANDBOX_ORIGIN}/c/d_x`;
+		expect(rewriteOrigins(source, local)).toBe(
+			"http://vaiven.localhost:8080/api and http://uc.vaiven.localhost:8080/c/d_x",
+		);
+	});
+
 	test("the file on disk is written against the canonical origin", () => {
 		expect(guide).toContain(`${CANONICAL_ORIGIN}/guide/app-mode.md`);
 	});
 
 	test("every sub-page the guide names exists on disk", async () => {
-		const pages = [...guide.matchAll(/https:\/\/[^\s"'`)\]<>]+\/guide\/([a-z0-9-]+\.md)/g)].map((m) => m[1]!);
+		// Every page, not just guide.md — a sub-page can link to a page that no longer exists.
+		const pages = Object.values(pageText).flatMap((text) =>
+			[...text.matchAll(/https:\/\/[^\s"'`)\]<>]+\/guide\/([a-z0-9-]+\.md)/g)].map((m) => m[1]!),
+		);
 		expect(pages.length).toBeGreaterThan(0);
 		for (const page of new Set(pages)) {
 			expect(await Bun.file(new URL(`../guide/${page}`, import.meta.url)).exists()).toBe(true);
