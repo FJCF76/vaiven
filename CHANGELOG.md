@@ -2,6 +2,20 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.5.1] - 2026-08-19
+
+Documentation catch-up for 0.2.5.0.
+
+### Fixed
+
+- **`README.md` claimed 233 unit tests when the suite has 235.** The number had been wrong
+  across two releases. Nothing guards it: a static count of the source says 172, because
+  several tests are generated inside `for` loops, so the source cannot answer the question.
+  Recorded in `TODOS.md` as P4 with the two files that prove it, rather than shipped as a
+  guard that would be wrong on the first read.
+- **The README docs table did not list `docs/designs/agent-onboarding.md`**, the design doc
+  that 0.2.5.0 added.
+
 ## [0.2.5.0] - 2026-08-19
 
 The manual was fixed twice for pointing agents at a CLI they cannot run. The API was still

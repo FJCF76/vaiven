@@ -82,7 +82,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 233 unit tests, no server needed
+bun test          # 235 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
@@ -175,5 +175,6 @@ open it, and in a shell an unset variable silently expands to nothing.
 | [`guide/limits.md`](guide/limits.md) | Size limits, quotas and rate limits. |
 | [`docs/designs/vaiven-v1.md`](docs/designs/vaiven-v1.md) | The reviewed design doc: why it is built this way, and the amendments layered on the spec. |
 | [`docs/designs/well-formed-urls.md`](docs/designs/well-formed-urls.md) | Why the manual stores real URLs rather than a placeholder, and how the serve-time rewrite works. |
+| [`docs/designs/agent-onboarding.md`](docs/designs/agent-onboarding.md) | Why the error hints stopped naming a CLI, and what a keyless agent is told instead. |
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, per version. |
 | [`TODOS.md`](TODOS.md) | What is known to be missing, with priorities. |
