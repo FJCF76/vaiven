@@ -104,9 +104,14 @@ function setStatus(text, kind) {
  */
 function showNotice(text, actionLabel, onAction, accent, sticky) {
 	if (noticeSlot.dataset.sticky === "1" && !sticky) return null;
+	// The retry loop re-asserts the same warning on every attempt. Re-rendering it wiped
+	// anything added beside it — including the confirmation for the button it contains.
+	const live = noticeSlot.firstElementChild;
+	if (live && live.dataset.text === text) return live;
 	noticeSlot.replaceChildren();
 	noticeSlot.dataset.sticky = sticky ? "1" : "";
 	const notice = el("div", accent ? "notice accent" : "notice");
+	notice.dataset.text = text;
 	notice.append(el("span", "grow", text));
 	if (actionLabel) {
 		const button = el("button", null, actionLabel);
@@ -248,13 +253,31 @@ const whenOf = (iso) => {
 /** The last thing standing between a failed save and someone losing an afternoon. */
 async function copyPending() {
 	const snapshot = JSON.stringify(latestState ?? {}, null, 2);
+	// Both outcomes are sticky. The notice this replaces is sticky, so without that flag
+	// the guard refused them and clicking "Copy my changes" produced NO feedback at all —
+	// in the one moment where silence reads as "the button is broken" and the person is
+	// deciding whether it is safe to close the tab.
+	let message;
 	try {
 		await navigator.clipboard.writeText(snapshot);
-		showNotice("Copied. Paste it somewhere safe before closing this tab.", null, null, true);
+		message = "Copied — paste it somewhere safe.";
 	} catch {
-		showNotice("Could not copy automatically — select the text in the console instead.", null, null);
 		console.log(snapshot);
+		message = "Could not copy automatically. Your changes are in the browser console.";
 	}
+
+	// Said INSIDE the warning, not instead of it: the changes still are not saved, so
+	// replacing that sentence with a cheerful one would be a lie by omission. Replacing
+	// the notice outright also lost the message a second later, because the retry loop
+	// re-asserts its own warning on every attempt.
+	const live = noticeSlot.firstElementChild;
+	if (!live) {
+		showNotice(message, null, null, true, true);
+		return;
+	}
+	const existing = live.querySelector(".confirm");
+	if (existing) existing.textContent = message;
+	else live.append(el("span", "confirm", message));
 }
 
 let latestState = null;

@@ -166,6 +166,7 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 }
 .notice.accent { background: var(--accent-soft); color: var(--accent); }
 .notice .grow { flex: 1; }
+.notice .confirm { font-weight: 600; }
 
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
