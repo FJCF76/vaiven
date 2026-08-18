@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS doc_keys (
   last_seen  INTEGER,
   -- A13: a bearer URL in a path has no leak-detection story at all. A distinct-IP count
   -- is the cheapest thing that makes one observable.
+  -- Per-key HASHES of the addresses seen, never the addresses. A13 asked for a distinct
+  -- count so a leaked link is observable; the count is all any consumer reads, and keeping
+  -- the addresses themselves would retain personal data nobody was told about.
   seen_ips   TEXT    NOT NULL DEFAULT '[]',
   revoked_at INTEGER,
   created_at INTEGER NOT NULL

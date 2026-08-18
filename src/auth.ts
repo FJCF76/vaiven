@@ -172,7 +172,10 @@ export function resolve(db: Database, plaintext: string | null | undefined): Sco
 /** keyId -> epoch ms of the last persisted touch. */
 const lastTouch = new Map<string, number>();
 const TOUCH_INTERVAL_MS = 60_000;
-/** Enough to notice a leak, small enough to stay a rounding error in the row. */
+/** Enough to notice a leak, small enough to stay a rounding error in the row.
+ *
+ *  These are per-key hashes of the address, never the address: salting with the key id
+ *  means the same person visiting two documents is not correlatable across them either. */
 const MAX_TRACKED_IPS = 20;
 
 /**
@@ -215,7 +218,13 @@ export function touchKeyById(db: Database, keyId: string, ip: string | null): vo
 			}
 		}
 
-		if (ip && !ips.includes(ip) && ips.length < MAX_TRACKED_IPS) ips.push(ip);
+		// Hashed, not raw. The only consumer — `vaiven key list` — reads the COUNT, which is
+		// all A13 asked for ("expose last_seen and a distinct-IP count so a leak is at least
+		// observable"). Storing the addresses themselves kept personal data, indefinitely,
+		// about people who were told their edits are recorded and nothing about their
+		// network. A hash keeps distinctness and drops the data.
+		const marker = ip ? hashKey(`${keyId}:${ip}`).slice(0, 16) : null;
+		if (marker && !ips.includes(marker) && ips.length < MAX_TRACKED_IPS) ips.push(marker);
 
 		db.query("UPDATE doc_keys SET last_seen = ?, seen_ips = ? WHERE id = ?").run(
 			now,

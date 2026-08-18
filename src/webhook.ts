@@ -85,13 +85,21 @@ function isForbiddenAddress(address: string): boolean {
 		const isLoopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
 		if (isZero || isLoopback) return true;
 
-		// Anything carrying an embedded IPv4 address is judged on that address: ::ffff:a.b.c.d
-		// (v4-mapped) and 64:ff9b::a.b.c.d (NAT64) both reach the v4 host they name.
+		// Anything carrying an embedded IPv4 address is judged on that address. There are
+		// four such forms and the first version of this handled two of them:
+		//   ::ffff:a.b.c.d   v4-mapped
+		//   64:ff9b::a.b.c.d NAT64
+		//   ::a.b.c.d        v4-compatible, deprecated by RFC 4291 but still parsed
+		//   2002:AABB:CCDD:: 6to4, where the v4 address is bytes 2-5
 		const v4Mapped =
 			bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
 		const nat64 =
 			bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b;
-		if (v4Mapped || nat64) return ipv4Forbidden(bytes[12]!, bytes[13]!);
+		const v4Compatible = bytes.slice(0, 12).every((byte) => byte === 0);
+		if (v4Mapped || nat64 || v4Compatible) return ipv4Forbidden(bytes[12]!, bytes[13]!);
+
+		// 6to4 embeds the v4 address one word in.
+		if (bytes[0] === 0x20 && bytes[1] === 0x02) return ipv4Forbidden(bytes[2]!, bytes[3]!);
 
 		return (
 			(bytes[0]! & 0xfe) === 0xfc || // fc00::/7 unique local
@@ -171,17 +179,21 @@ export function queueWebhook(
 	void (async () => {
 		// Re-check at DELIVERY time, not only at configuration time. The stored verdict was
 		// reached against whatever DNS answered then; a record with a short TTL can answer
-		// public once and 127.0.0.1 or 169.254.169.254 for every call after. The window
-		// cannot be closed completely without pinning the connection to the vetted address,
-		// which Bun's fetch gives no seam for, but re-resolving here shrinks it from days to
-		// milliseconds and defeats the ordinary rebinding case.
+		// public once and 127.0.0.1 or 169.254.169.254 for every call after.
+		//
+		// The check runs before EVERY attempt, not once for the whole loop. Validating once
+		// and then retrying three times with backoff authorises about thirty seconds of
+		// attacker-timed connections on the strength of a single resolution — three chances
+		// to be handed the private answer instead of one.
+		//
+		// It is still not closed. Bun's fetch does its own resolution and offers no seam to
+		// pin the connection to the address we vetted; measured here, the validating lookup
+		// does not even populate the cache the fetch uses. A TTL-0 record that alternates
+		// answers wins the race. What holds after that is the platform layer: https only, so
+		// the target must complete a TLS handshake for the attacker's hostname, and the
+		// unit's IPAddressDeny puts the metadata endpoint and every RFC1918 range out of
+		// reach regardless of what this code decides.
 		const target = new URL(doc.webhook_url!);
-		const verdict = await resolvesPublicly(target.hostname);
-		if (!verdict.ok) {
-			recordFailure(db, doc.id, `refused: ${verdict.reason}`);
-			inFlight.delete(doc.id);
-			return;
-		}
 
 		const body = JSON.stringify(payload);
 		// Authenticity: without a signature the webhook URL is an unauthenticated push
@@ -190,9 +202,16 @@ export function queueWebhook(
 
 		let lastError = "";
 		for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+			const verdict = await resolvesPublicly(target.hostname);
+			if (!verdict.ok) {
+				recordFailure(db, doc.id, "refused: the endpoint is not a public address");
+				inFlight.delete(doc.id);
+				return;
+			}
+
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS);
 			try {
-				const controller = new AbortController();
-				const timer = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS);
 				const response = await fetch(doc.webhook_url!, {
 					method: "POST",
 					headers: {
@@ -205,15 +224,22 @@ export function queueWebhook(
 					redirect: "manual",
 					signal: controller.signal,
 				});
-				clearTimeout(timer);
-
 				if (response.status >= 200 && response.status < 300) {
 					inFlight.delete(doc.id);
 					return;
 				}
-				lastError = `HTTP ${response.status}`;
-			} catch (error) {
-				lastError = (error as Error).name === "AbortError" ? "timed out" : (error as Error).message;
+				// Deliberately coarse. This note is stored as an event and served from
+				// /r/<read_key>.json, unauthenticated and with access-control-allow-origin
+				// *, so an exact status code or a transport error message turns a webhook
+				// into a port scanner whose results anyone with the read URL can collect.
+				// "It answered and refused" is what an operator needs; which 4xx it was is
+				// what an attacker needs.
+				lastError = "the endpoint answered but did not accept it";
+			} catch {
+				lastError = "no usable response from the endpoint";
+			} finally {
+				// On the throw path this was never cleared, leaving a live timer per attempt.
+				clearTimeout(timer);
 			}
 
 			if (attempt < ATTEMPTS) {
