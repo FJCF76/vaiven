@@ -77,7 +77,26 @@ Inline everything, and embed assets as `data:` URIs. Everything else works: Java
 `eval`, canvas, WebGL, Web Workers, audio, animation, nested frames. Up to 4 MB.
 
 If the person can **add, remove or reorder** rows, automatic mode cannot restore that
-structure on reload. Use app mode instead: **`$HOST/guide/app-mode.md`**.
+structure on reload. Take over with app mode. That is the whole API:
+
+```js
+Vaiven.render(state => { … })   // your painter. Runs when state arrives and after every
+                                // change, including changes you make on a later turn.
+Vaiven.mutate(draft => { … })   // the ONLY way to change state. Mutate the draft you are
+                                // given; the diff, the save and the event log follow.
+Vaiven.log(kind, payload)       // append a note without changing state.
+Vaiven.state                    // the current state. Read it; do not assign to it.
+Vaiven.readonly                 // true when the viewer holds a read key. Hide your controls.
+```
+
+Both callbacks take the state object and return nothing — `mutate` reads back whatever you
+did to the draft, so there is nothing to return and no save to confirm. `mutate` is a no-op
+for a read-key viewer. Never call `mutate` from inside `render`: it loops, and both the page
+and the shell stop you loudly. Never assume a field exists — write `s.items ?? []`, because
+you will republish this app while old state is live.
+
+The rules, the worked example and the `_vid` convention for array rows:
+**`$HOST/guide/app-mode.md`**.
 
 ## 3. Read back what changed
 
