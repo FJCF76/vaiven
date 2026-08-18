@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Field coverage</title>
+<style>
+	body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
+	fieldset { border: 1px solid #ccc; border-radius: 6px; margin: 0 0 1rem; padding: .75rem 1rem; }
+	legend { font-weight: 600; }
+	label { display: block; margin: .35rem 0; }
+	[contenteditable] { border: 1px solid #ccc; border-radius: 4px; min-height: 2.5rem; padding: .4rem; }
+</style>
+
+<h1>Field coverage</h1>
+<p>Automatic mode was specified by three examples. This is every case A10 named, so that
+   "it works" is a statement about the whole table rather than about text inputs.</p>
+
+<fieldset>
+	<legend>Text-shaped</legend>
+	<label>Plain text <input name="plain" value="start"></label>
+	<label>Number <input type="number" name="count" value="3"></label>
+	<label>Range <input type="range" name="slider" min="0" max="10" value="5"></label>
+	<label>Date <input type="date" name="when" value="2026-01-01"></label>
+	<label>Textarea <textarea name="notes" rows="3">first line</textarea></label>
+</fieldset>
+
+<fieldset>
+	<legend>Many elements, one name</legend>
+	<label><input type="radio" name="size" value="s"> Small</label>
+	<label><input type="radio" name="size" value="m" checked> Medium</label>
+	<label><input type="radio" name="size" value="l"> Large</label>
+
+	<label><input type="checkbox" name="extras" value="salad"> Salad</label>
+	<label><input type="checkbox" name="extras" value="fries" checked> Fries</label>
+	<label><input type="checkbox" name="extras" value="drink"> Drink</label>
+
+	<label><input type="checkbox" name="agreed"> A lone box is a boolean, not a set</label>
+</fieldset>
+
+<fieldset>
+	<legend>Selects</legend>
+	<label>One
+		<select name="city">
+			<option value="santander" selected>Santander</option>
+			<option value="madrid">Madrid</option>
+		</select>
+	</label>
+	<label>Many
+		<select name="days" multiple size="3">
+			<option value="mon" selected>Monday</option>
+			<option value="tue">Tuesday</option>
+			<option value="wed">Wednesday</option>
+		</select>
+	</label>
+</fieldset>
+
+<fieldset>
+	<legend>Not a form control</legend>
+	<div contenteditable name="summary" id="summary">An editable region.</div>
+</fieldset>
+
+<fieldset>
+	<legend>Never captured</legend>
+	<label>Password <input type="password" name="secret" value="hunter2"></label>
+	<label>File <input type="file" name="upload"></label>
+	<input type="hidden" name="csrf" value="tok">
+	<label>Opted out by autocomplete <input name="offswitch" autocomplete="off" value="private"></label>
+	<div data-vaiven-ignore><label>Opted out by attribute <input name="ignored" value="private"></label></div>
+	<label>Disabled by the author <input name="frozen" value="frozen" disabled></label>
+</fieldset>
+
+<fieldset>
+	<legend>No name at all</legend>
+	<label>Structural key <input value="unnamed"></label>
+</fieldset>

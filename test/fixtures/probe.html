@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vaiven origin probe</title>
+<style>
+  body { font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace; padding: 24px; }
+  dt { color: #666; margin-top: 12px; }
+  dd { margin: 2px 0 0; font-weight: 600; }
+  .ok { color: #0b6b5e; } .bad { color: #a03232; }
+</style>
+</head>
+<body>
+<h1>Origin probe</h1>
+<dl id="out"></dl>
+<script>
+// Gate 1. The `sandbox` directive is in the RESPONSE HEADER, not only the iframe
+// attribute, so this must hold even under DIRECT navigation with no frame involved.
+// If origin is not "null" here, §3's entire isolation argument is wrong.
+(() => {
+  const result = {
+    origin: null,
+    storageThrows: null,
+    storageError: null,
+    cookieEmpty: null,
+    hasParent: window.parent !== window,
+  };
+
+  try { result.origin = String(window.origin); } catch (e) { result.origin = "threw: " + e.name; }
+
+  try {
+    localStorage.getItem("vaiven-probe");
+    result.storageThrows = false;
+  } catch (e) {
+    result.storageThrows = true;
+    result.storageError = e.name;
+  }
+
+  try { result.cookieEmpty = document.cookie === ""; } catch { result.cookieEmpty = true; }
+
+  window.__probe = result;
+
+  const out = document.getElementById("out");
+  for (const [key, value] of Object.entries(result)) {
+    const dt = document.createElement("dt");
+    dt.textContent = key;
+    const dd = document.createElement("dd");
+    dd.textContent = String(value);
+    if (key === "origin") dd.className = value === "null" ? "ok" : "bad";
+    if (key === "storageThrows") dd.className = value === true ? "ok" : "bad";
+    out.append(dt, dd);
+  }
+
+  document.documentElement.dataset.probe = "done";
+})();
+</script>
+</body>
+</html>
