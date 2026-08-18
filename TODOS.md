@@ -170,7 +170,13 @@ then priority. Completed items move to the bottom.
 - `config.ts` startup refusals, tested in a subprocess (13 checks). Found and fixed a real
   hole while writing them: `http` was refused only when NEITHER host was `.localhost`, so
   one `.localhost` host paired with a real one served the shell in the clear.
-  **Completed:** v0.2.0.0 (2026-08-18)
-- `bun run dev` handed back URLs on a port nothing was listening on. **Completed:** v0.2.0.0 (2026-08-18)
+  **Completed:** v0.2.1.0 (2026-08-18)
+- `bun run dev` handed back URLs on a port nothing was listening on. **Completed:** v0.2.1.0 (2026-08-18)
+- The manual named `Vaiven.render` and `mutate` and defined them nowhere, behind a link
+  nothing could fetch. **Completed:** v0.2.1.0 (2026-08-18)
+- An installed manual carried no version, so a correction could never reach anyone who had
+  already installed it. **Completed:** v0.2.1.0 (2026-08-18)
+- The guide tests reimplemented the code they were meant to test. **Completed:** v0.2.1.0 (2026-08-18)
+- A deleted field lost to a concurrent edit, silently. **Completed:** v0.2.1.0 (2026-08-18)
 - `README.md` documents install, `bun run dev`, the `.localhost` recipe, the environment,
   the test tiers and where every other doc lives. **Completed:** v0.2.0.0 (2026-08-18)
