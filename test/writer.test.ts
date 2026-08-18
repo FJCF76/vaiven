@@ -358,3 +358,28 @@ describe("the idempotency key (A7)", () => {
 		expect(h.puts[0].requestId).not.toBe(h.puts[1].requestId);
 	});
 });
+
+describe("the merge, on a delete that races an edit", () => {
+	// Regression: a key we deleted stayed deleted only if their copy still matched the
+	// base, so a delete racing an edit silently resurrected the thing the person had just
+	// removed — and the status went straight to "Saved", so nothing said otherwise.
+	test("our deletion wins even when they edited that key", () => {
+		expect(
+			threeWayMerge({ task: { text: "old" }, other: 1 }, { other: 1 }, { task: { text: "new" }, other: 1 }),
+		).toEqual({ other: 1 });
+	});
+
+	test("our deletion wins for a scalar too", () => {
+		expect(threeWayMerge({ note: "old", a: 1 }, { a: 1 }, { note: "new", a: 1 })).toEqual({ a: 1 });
+	});
+
+	test("a key they ADDED and we never saw still arrives", () => {
+		expect(threeWayMerge({ a: 1 }, { a: 1 }, { a: 1, theirs: "new" })).toEqual({ a: 1, theirs: "new" });
+	});
+
+	test("deleting one key does not disturb the others", () => {
+		expect(
+			threeWayMerge({ a: 1, b: 2, c: 3 }, { a: 1, c: 3 }, { a: 1, b: 99, c: 3 }),
+		).toEqual({ a: 1, c: 3 });
+	});
+});

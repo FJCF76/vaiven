@@ -147,6 +147,11 @@ function clearNotice(topic) {
 	if (!live) return;
 	if (topic && live.dataset.topic !== topic) return;
 	noticeSlot.replaceChildren();
+
+	// Put a terminal warning back. Nothing else will ever re-raise it.
+	if (terminalNotice) {
+		showNotice(terminalNotice.text, terminalNotice.action, terminalNotice.onAction, false, "saving");
+	}
 }
 
 // --------------------------------------------------------------------- API plumbing
@@ -246,6 +251,10 @@ const writer = new Writer({
 				break;
 			case "blocked":
 				setStatus("Not saved", "blocked");
+				// Terminal: the writer stops, so onStatus never fires again. A security
+				// notice legitimately outranks this one, and without remembering it the
+				// only escape hatch for the unsaved work would be gone for good.
+				terminalNotice = { text: status.reason, action: "Copy my changes", onAction: copyPending };
 				showNotice(status.reason, "Copy my changes", copyPending, false, "saving");
 				break;
 			case "readonly":
@@ -658,10 +667,19 @@ let polling = true;
 let cursor = 0;
 /** The republished content_version, held until the person accepts the reload. */
 let pendingContentVersion = null;
+/** A warning that nothing will ever re-raise, so it is re-shown after anything replaces it. */
+let terminalNotice = null;
+
+let pollInFlight = false;
 
 async function poll() {
 	if (!polling) return;
 	if (document.visibilityState === "hidden") return;
+	// setInterval does not wait. A slow response could land AFTER a later one, push the
+	// cursor backwards, re-announce events already shown, and leave doc/latestState
+	// describing an older version than the writer had already adopted.
+	if (pollInFlight) return;
+	pollInFlight = true;
 
 	try {
 		// `since` is an EVENT ID, not a version. Passing doc.version meant the cursor was a
@@ -710,6 +728,8 @@ async function poll() {
 		renderChrome();
 	} catch {
 		// Offline. The next tick tries again; the writer surfaces its own failures.
+	} finally {
+		pollInFlight = false;
 	}
 }
 

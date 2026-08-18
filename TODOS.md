@@ -100,6 +100,14 @@ then priority. Completed items move to the bottom.
   coincides with a version bump, and the guide never tells agents to send `If-None-Match`.
   It is a correctness gap waiting for the first agent that does.
 
+- **An event appended without a version bump is invisible to a conditional reader.**
+  **Priority:** P2
+  `postEvents` deliberately does not bump the version and the ETag is built from version
+  plus content_version, so a poll sending `If-None-Match` gets a 304 and the appended
+  event is never delivered to that client at all — not merely late. Closing it properly
+  means adding the newest event id to the ETag, which changes a documented contract.
+  Found independently by the pre-landing review and by Codex.
+
 - **A 64-character `request_id` prefix collision would replay the wrong write.**
   **Priority:** P3
   `putState` truncates the id at 64 characters, so two long ids sharing a prefix collide.
@@ -134,8 +142,6 @@ then priority. Completed items move to the bottom.
   message; the doc still asserts the opposite. The ops divergences are recorded properly
   and are the model to follow.
 - **CORS on `/r/` is still listed as an open question** and was decided and shipped.
-- **`README.md` is two lines** and documents nothing: no install, no `bun run dev`, no
-  `.localhost` recipe.
 
 ## Completed
 
@@ -145,3 +151,5 @@ then priority. Completed items move to the bottom.
 - The shell, the helper, and administration. **Completed:** v0.2.0.0 (2026-08-18)
 - The manual and ops. **Completed:** v0.2.0.0 (2026-08-18)
 - Security audit findings, design audit findings, QA findings. **Completed:** v0.2.0.0 (2026-08-18)
+- `README.md` documents install, `bun run dev`, the `.localhost` recipe, the environment,
+  the test tiers and where every other doc lives. **Completed:** v0.2.0.0 (2026-08-18)
