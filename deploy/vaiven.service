@@ -1,0 +1,55 @@
+[Unit]
+Description=Vaiven — living documents between an agent and people
+Documentation=https://vaiven.owncompute.com/guide.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vaiven
+Group=vaiven
+WorkingDirectory=/opt/vaiven
+EnvironmentFile=/etc/vaiven/vaiven.env
+ExecStart=/usr/local/bin/bun run /opt/vaiven/src/index.ts
+Restart=always
+RestartSec=2
+
+# An OOM here should kill this service and nothing else. Without a cap, the kernel picks
+# a victim by heuristic and sshd is a plausible choice on a 3.8 GB box.
+MemoryMax=768M
+TasksMax=256
+
+# The process serves model-authored HTML. It should be able to touch its database and
+# nothing else on the filesystem.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+# A15's webhook is the only outbound path; everything else is loopback.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# NOT ~@resources: Bun's allocator and JIT need mbind/set_mempolicy/sched_setaffinity
+# from that set, and denying it kills the process with SIGSYS at startup. Verified on
+# this box — the failure is immediate and total, so it cannot regress silently.
+SystemCallFilter=~@privileged
+
+ReadWritePaths=/var/lib/vaiven
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vaiven
+
+[Install]
+WantedBy=multi-user.target
