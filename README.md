@@ -21,8 +21,12 @@ is about running and developing the service.
 
 ## What you need
 
-- **Bun 1.3+.** That is the whole toolchain. `bun:sqlite` is the database driver, so there is
-  no separate SQLite install and no native build step.
+- **Bun 1.3+.** That is the whole toolchain for running and testing: `bun:sqlite` is the
+  database driver, so there is no native build step and nothing to install for the server
+  itself.
+- **The `sqlite3` CLI, on a production host only.** `deploy/backup.sh` and
+  `deploy/restore-drill.sh` shell out to it for `.backup` and `PRAGMA integrity_check`;
+  `bun:sqlite` does not provide a command-line tool.
 - **Two hostnames.** Model-authored HTML is served from a different host than the shell that
   holds the write key. The process refuses to start if the two hosts are equal, because a
   collapsed origin is exactly the failure the design exists to prevent.
@@ -42,17 +46,14 @@ bun run dev
 `http://uc.vaiven.localhost:8080`, writing to `./dev.sqlite`. Browsers resolve any
 `*.localhost` name to loopback on their own and treat the two names as separate origins, so
 there is no hosts file to edit and no certificate to mint. `http` is refused outright unless
-one of the two hosts ends in `.localhost`, because serving the shell over plaintext puts the
-write key in the fragment of an interceptable page.
+**both** hosts end in `.localhost`, because serving the shell over plaintext puts the write
+key in the fragment of an interceptable page.
 
-**Add `VAIVEN_PUBLIC_PORT=8080` if you are following links the API hands back.** The origins
-in `view_url` and `read_url` are built from the *public* port, which defaults to 80 under
-`http`, so without it the links come back pointing at a port nothing is listening on. Serving
-and browsing by hand are unaffected.
-
-```bash
-VAIVEN_PUBLIC_PORT=8080 bun run dev
-```
+`bun run dev` also sets `VAIVEN_PUBLIC_PORT=8080`, which matters more than it looks. The
+origins in `view_url` and `read_url` are built from the *public* port, and it defaults to 80
+under `http`, so without it every link the API hands back points at a port nothing is
+listening on. Anything else that builds those URLs needs it in its own environment too: the
+CLI below, and the live suites further down.
 
 `bun run start` runs the same server with nothing baked in, so you supply the whole
 environment yourself. That is what production does, via an `EnvironmentFile` on the systemd
@@ -63,7 +64,7 @@ same `VAIVEN_*` environment the server runs with:
 
 ```bash
 export VAIVEN_APP_HOST=vaiven.localhost VAIVEN_SANDBOX_HOST=uc.vaiven.localhost
-export VAIVEN_SCHEME=http VAIVEN_PORT=8080 VAIVEN_DB=./dev.sqlite
+export VAIVEN_SCHEME=http VAIVEN_PORT=8080 VAIVEN_PUBLIC_PORT=8080 VAIVEN_DB=./dev.sqlite
 bun run cli tenant create "Your Name"
 ```
 
@@ -81,7 +82,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 173 unit tests, no server needed
+bun test          # 212 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
@@ -118,7 +119,7 @@ the production-shaped value in the table.
 | `VAIVEN_APP_HOST` | none, required | The shell's host. Holds the write key. |
 | `VAIVEN_SANDBOX_HOST` | none, required | The content host. Serves model-authored HTML under `Content-Security-Policy: sandbox`. Must differ from `VAIVEN_APP_HOST`. |
 | `VAIVEN_DB` | `/var/lib/vaiven/db.sqlite` | SQLite file. |
-| `VAIVEN_SCHEME` | `https` | `http` is refused unless one of the two hosts ends in `.localhost`. |
+| `VAIVEN_SCHEME` | `https` | `http` is refused unless **both** hosts end in `.localhost`. |
 | `VAIVEN_PORT` | `8080` | The port this process listens on, behind the proxy. |
 | `VAIVEN_PUBLIC_PORT` | `443`, or `80` under `http` | The port the world reaches you on. It is the one that belongs in an origin, so CSP host-sources match. |
 | `VAIVEN_BIND` | `127.0.0.1` | The interface to listen on. |
@@ -136,7 +137,9 @@ the production-shaped value in the table.
 - `vaiven-backup.service` / `vaiven-backup.timer` — a verified hot backup every six hours,
   with an integrity check and a WAL checkpoint.
 - `backup.sh`, `restore-drill.sh`, `sync.sh` — the backup, the rehearsed restore, and the
-  deploy sync.
+  deploy sync. The backup reads `VAIVEN_BACKUP_DIR` (default `/var/lib/vaiven/backups`) and
+  `VAIVEN_BACKUP_KEEP` (default 14). At the six-hourly cadence 14 copies is three and a half
+  days of history, so raise it if you want to be able to reach further back.
 
 ## Where the docs are
 

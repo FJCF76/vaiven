@@ -2,6 +2,76 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.1.0] - 2026-08-18
+
+Everything here came from one agent using Vaivén for real and reporting back, and from
+running the review gates over the fixes that feedback produced.
+
+### Fixed
+
+- **The manual named an API it never defined.** `Vaiven.render` and `mutate` were mentioned
+  and documented nowhere, behind a link written as `$HOST/guide/app-mode.md` — a shell
+  placeholder nothing could fetch. An agent building against it had to either invent the
+  signatures or stop and ask. Every URL the guide points AT is absolute now — `$KEY`,
+  `$DOC` and `$READ_URL` remain for the caller to fill in, which is the distinction — and
+  the whole app-mode API is in the manual itself, so it cannot be invented.
+- **An installed manual could never be corrected.** The guide is distributed by copy into
+  `~/.claude/skills/vaiven/SKILL.md`, and nothing on that copy said which version it was.
+  A correction made today stayed wrong forever for anyone who installed yesterday, and
+  neither the agent nor the person could tell. Every page carries its version and the
+  address of the current one.
+- **`state` has its own 1 MB cap** and the guide only ever mentioned content's 4 MB, so the
+  natural inference — "well under 4 MB, so size is not my problem" — was wrong for the one
+  thing that grows as a document is used. Said where the 4 MB is said.
+- **A field the person deleted came back** if the agent edited it at the same moment, with
+  the save status showing "Saved". Delete-vs-edit is a real conflict; the person's deletion
+  wins, which is what the merge policy always claimed.
+- **Overlapping polls could rewind the event cursor**, re-announcing changes already seen.
+- **A terminal "not saving" warning could be destroyed** by a lower-priority notice and
+  never return, taking the only escape hatch for unsaved work with it.
+- **Plaintext was permitted with one real host.** The check only refused when *neither* host
+  was `.localhost`, so the shell could be served in the clear with a write key in its URL
+  fragment.
+- **Hostnames were never validated**, and the origin built from them is spliced into
+  `frame-ancestors` and `frame-src`, where a malformed value fails open.
+- **`bun run dev` handed back URLs on a port nothing was listening on.**
+
+### Added
+
+- A README that documents how to run, test, configure and deploy the service.
+- `test/config.test.ts` — the startup refusals, in real subprocesses. `appHost ===
+  sandboxHost` is the invariant the whole security design rests on and nothing had ever
+  executed that branch.
+- `test/guide.test.ts` — the manual's claims, checked against the code that serves them.
+
+### Changed
+
+- 169 to 212 unit tests. The guide tests invoke the real handler; the first version of them
+  reimplemented its logic, so deleting the code under test left them all passing.
+
+### Compatibility
+
+Two configurations that used to start now refuse to. Both are deliberate, and both are the
+fix rather than a side effect of it:
+
+- `VAIVEN_SCHEME=http` with only one host on `.localhost`.
+- A hostname containing anything outside `[a-z0-9.-]` (or a bracketed IPv6 literal).
+
+If Vaivén stops booting after this upgrade, the startup message says which one and why.
+
+### Known issues
+
+Carried forward, all tracked in `TODOS.md`:
+
+- An event appended without a version bump is invisible to a client sending `If-None-Match`,
+  because the ETag has no event component. Affects any agent using conditional reads.
+- A replay can return a version that is no longer current, if a write without a
+  `request_id` landed in between.
+- A `request_id` longer than 64 characters is truncated, so two ids sharing a prefix
+  collide.
+- No one who has not seen the system has used it yet, and no cold agent has bootstrapped
+  from `guide.md` alone. Those two gates are still open.
+
 ## [0.2.0.0] - 2026-08-18
 
 The first working version. An agent publishes a small web app, a person edits it, and the
