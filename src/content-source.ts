@@ -1,28 +1,41 @@
 // Where `/c/:id` gets its HTML.
 //
-// Phase 0 serves fixtures so the sandbox gates can be proved against a real host before
-// any database exists. Phase 2 replaces `lookup` with the `doc_content` read; nothing
-// else in the request path changes, which is the point of keeping it behind one function.
+// Documents come from the database. The three fixtures stay reachable because the Phase 0
+// gates run against the live deployment and need something inert to point at — they carry
+// no data and depend on nothing.
 
+import type { Database } from "bun:sqlite";
 import { join } from "node:path";
 
 const FIXTURE_ROOT = join(import.meta.dir, "..", "test", "fixtures");
 
-/** Fixture ids that exist only to prove Phase 0's gates. Removed once Phase 2 lands. */
 const FIXTURES: Record<string, string> = {
-	// Reports its own origin and whether storage throws — the opaque-origin gate.
-	probe: "probe.html",
-	// Exercises every capability A4 says is allowed — the ceiling gate.
-	canary: "canary.html",
-	// Automatic-mode field coverage (A10). Used from Phase 4 onward.
-	fields: "fields.html",
+	probe: "probe.html", // gate 1: opaque origin
+	canary: "canary.html", // gate 4: the authoring ceiling
+	fields: "fields.html", // A10: automatic-mode field coverage
 };
 
-export async function lookup(id: string): Promise<string | null> {
-	const fixture = FIXTURES[id];
-	if (!fixture) return null;
+export interface ContentResult {
+	html: string;
+	contentVersion: number;
+}
 
-	const file = Bun.file(join(FIXTURE_ROOT, fixture));
-	if (!(await file.exists())) return null;
-	return file.text();
+export async function lookup(db: Database | null, id: string): Promise<ContentResult | null> {
+	const fixture = FIXTURES[id];
+	if (fixture) {
+		const file = Bun.file(join(FIXTURE_ROOT, fixture));
+		if (await file.exists()) return { html: await file.text(), contentVersion: 0 };
+		return null;
+	}
+
+	if (!db) return null;
+
+	const row = db
+		.query<{ content: string; content_version: number }, [string]>(
+			"SELECT content, content_version FROM doc_content WHERE doc_id = ?",
+		)
+		.get(id);
+
+	if (!row || !row.content) return null;
+	return { html: row.content, contentVersion: row.content_version };
 }
