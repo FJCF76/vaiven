@@ -304,11 +304,17 @@ export function threeWayMerge(base: unknown, ours: unknown, theirs: unknown): un
 		merged[key] = oursObj[key];
 	}
 
-	// A key we deleted and they did not touch stays deleted.
+	// A key we deleted stays deleted, INCLUDING when they edited it meanwhile.
+	//
+	// It used to stay deleted only if their copy still matched the base, so a delete
+	// racing an edit silently resurrected the thing the person had just removed — and the
+	// status went straight to "Saved", so nothing said otherwise. Delete-vs-edit is a
+	// genuine conflict and somebody's work is lost either way; the field-level policy
+	// this merge is built on is that ours wins where we changed it, and a deletion is a
+	// change. The other side is an agent that can re-add; the person watching the screen
+	// cannot un-see their deletion undoing itself.
 	for (const key of Object.keys(baseObj)) {
-		if (!(key in oursObj) && JSON.stringify(baseObj[key]) === JSON.stringify(theirsObj[key])) {
-			delete merged[key];
-		}
+		if (!(key in oursObj)) delete merged[key];
 	}
 
 	return merged;
