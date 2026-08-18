@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vaiven conformance canary</title>
+<style>
+  body { font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace; padding: 24px; }
+  li { list-style: none; }
+  .pass::before { content: "PASS  "; color: #0b6b5e; }
+  .fail::before { content: "FAIL  "; color: #a03232; }
+  @keyframes drift { from { opacity: .2 } to { opacity: 1 } }
+  #animated { animation: drift 8s linear infinite; width: 40px; height: 8px; background: #0b6b5e; }
+</style>
+</head>
+<body>
+<h1>Conformance canary</h1>
+<p>Every capability A4 says is allowed. A regression here means a category of app
+   stopped being buildable, which is the failure the audit exists to catch.</p>
+<canvas id="cv" width="8" height="8"></canvas>
+<div id="animated"></div>
+<ul id="out"></ul>
+
+<script>
+// Programmatic, not a checklist wearing a CI badge. Each check resolves to true/false
+// and the whole set lands on window.__canary for the harness to read over CDP.
+(() => {
+  const checks = {};
+  const violations = [];
+
+  // CSP violations are the ground truth for the fetch-governed checks: an allowed
+  // capability produces no violation even when the payload itself is rejected for
+  // unrelated reasons (a deliberately invalid font still proves font-src let it through).
+  addEventListener("securitypolicyviolation", (e) => {
+    violations.push({
+      directive: e.effectiveDirective || e.violatedDirective,
+      blocked: String(e.blockedURI || "").slice(0, 60),
+    });
+  });
+
+  const done = (name, value) => { checks[name] = value; };
+
+  // ---- synchronous checks ---------------------------------------------------------
+
+  // A14: the helper is injected after <head>, so the doctype stays at position 0.
+  // Quirks mode would silently change the box model of every document we serve.
+  done("compatMode", document.compatMode === "CSS1Compat");
+
+  try { done("eval", eval("1 + 1") === 2); } catch { done("eval", false); }
+
+  try {
+    const ctx = document.getElementById("cv").getContext("2d");
+    ctx.fillStyle = "#0b6b5e";
+    ctx.fillRect(0, 0, 8, 8);
+    const px = ctx.getImageData(2, 2, 1, 1).data;
+    done("canvas", px[3] === 255);
+  } catch { done("canvas", false); }
+
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    done("webgl", !!gl);
+  } catch { done("webgl", false); }
+
+  try {
+    const opacity = getComputedStyle(document.getElementById("animated")).opacity;
+    done("animation", Number(opacity) > 0 && Number(opacity) <= 1);
+  } catch { done("animation", false); }
+
+  done("modalsPresent", typeof window.confirm === "function");
+  // Called separately by the harness with a dialog listener attached: a dialog EVENT is
+  // the only way to distinguish "allow-modals granted" from "confirm() returned false
+  // immediately because it was suppressed".
+  window.__testModal = () => confirm("canary");
+
+  done("pointerLockPresent", typeof document.body.requestPointerLock === "function");
+
+  // ---- asynchronous checks --------------------------------------------------------
+
+  const tasks = [];
+
+  // script-src blob:
+  tasks.push(new Promise((resolve) => {
+    try {
+      window.__blobRan = false;
+      const url = URL.createObjectURL(new Blob(["window.__blobRan = true;"], { type: "text/javascript" }));
+      const script = document.createElement("script");
+      script.onload = () => { done("blobScript", window.__blobRan === true); resolve(); };
+      script.onerror = () => { done("blobScript", false); resolve(); };
+      script.src = url;
+      document.head.append(script);
+      setTimeout(() => { done("blobScript", window.__blobRan === true); resolve(); }, 1500);
+    } catch { done("blobScript", false); resolve(); }
+  }));
+
+  // worker-src blob: — the worker must inherit the document CSP, so this also proves
+  // that connect-src 'none' still binds inside it.
+  tasks.push(new Promise((resolve) => {
+    try {
+      const url = URL.createObjectURL(new Blob(["onmessage = () => postMessage('pong')"], { type: "text/javascript" }));
+      const worker = new Worker(url);
+      const timer = setTimeout(() => { done("worker", false); resolve(); }, 2500);
+      worker.onmessage = (e) => { clearTimeout(timer); done("worker", e.data === "pong"); worker.terminate(); resolve(); };
+      worker.onerror = () => { clearTimeout(timer); done("worker", false); resolve(); };
+      worker.postMessage("ping");
+    } catch { done("worker", false); resolve(); }
+  }));
+
+  // media-src data: — a minimal valid WAV built in JS, so the fixture carries no binary.
+  tasks.push(new Promise((resolve) => {
+    try {
+      const rate = 8000, frames = 80;
+      const buf = new ArrayBuffer(44 + frames);
+      const view = new DataView(buf);
+      const ascii = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+      ascii(0, "RIFF"); view.setUint32(4, 36 + frames, true); ascii(8, "WAVEfmt ");
+      view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, rate, true); view.setUint32(28, rate, true);
+      view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+      ascii(36, "data"); view.setUint32(40, frames, true);
+      for (let i = 0; i < frames; i++) view.setUint8(44 + i, 128);
+
+      let binary = "";
+      for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);
+      const audio = new Audio("data:audio/wav;base64," + btoa(binary));
+      const timer = setTimeout(() => { done("audioDataUri", false); resolve(); }, 2500);
+      // Metadata is enough: decoding proves media-src let the data: URI through.
+      // Playback would false-fail on autoplay policy, which is not what we are testing.
+      audio.onloadedmetadata = () => { clearTimeout(timer); done("audioDataUri", true); resolve(); };
+      audio.onerror = () => { clearTimeout(timer); done("audioDataUri", false); resolve(); };
+      audio.load();
+    } catch { done("audioDataUri", false); resolve(); }
+  }));
+
+  // font-src data: — a deliberately invalid payload. If font-src blocked it we get a
+  // securitypolicyviolation naming font-src; if it is allowed we get a parse failure
+  // and no violation. Absence of the violation is the signal.
+  tasks.push((async () => {
+    try {
+      const face = new FontFace("VaivenCanary", "url(data:font/woff2;base64,d09GMgABAAAAAAAM)");
+      try { await face.load(); } catch { /* invalid payload is expected */ }
+    } catch { /* constructor rejection is also fine */ }
+    await new Promise((r) => setTimeout(r, 300));
+    done("fontDataUriAllowed", !violations.some((v) => String(v.directive).includes("font-src")));
+  })());
+
+  // frame-src data: plus srcdoc — nested frames, re-enabled by A4.
+  tasks.push(new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => { if (!settled) { settled = true; done("nestedFrame", value); resolve(); } };
+    try {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("srcdoc", "<script>parent.postMessage('nested-ok','*')<\/script>");
+      frame.style.display = "none";
+      addEventListener("message", function onMessage(e) {
+        if (e.data === "nested-ok") { removeEventListener("message", onMessage); finish(true); }
+      });
+      document.body.append(frame);
+      setTimeout(() => finish(false), 2500);
+    } catch { finish(false); }
+  }));
+
+  // connect-src 'none' — this one must FAIL to pass. It is the control: if a fetch
+  // succeeds here the isolation model is broken and every other result is meaningless.
+  tasks.push((async () => {
+    try {
+      await fetch("https://example.com/vaiven-canary-should-be-blocked");
+      done("networkBlocked", false);
+    } catch {
+      done("networkBlocked", true);
+    }
+  })());
+
+  Promise.allSettled(tasks).then(() => {
+    window.__canary = { checks, violations };
+
+    const out = document.getElementById("out");
+    for (const [name, value] of Object.entries(checks)) {
+      const li = document.createElement("li");
+      li.className = value ? "pass" : "fail";
+      li.textContent = name;
+      out.append(li);
+    }
+
+    document.documentElement.dataset.canary = "done";
+  });
+})();
+</script>
+</body>
+</html>

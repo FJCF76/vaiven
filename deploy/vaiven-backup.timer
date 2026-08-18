@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Vaiven backup every six hours
+# A backup script nobody runs is a file, not a backup. This is the thing that makes it one.
+
+[Timer]
+OnCalendar=00/6:17
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

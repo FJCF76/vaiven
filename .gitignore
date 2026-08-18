@@ -1,2 +1,17 @@
 # Bootstrap input, not a project resource — kept local, never published.
 vaiven-spec.md
+
+# Local working notes for coding agents — not a project resource.
+CLAUDE.md
+
+# Throwaway Phase -1 experiments — delete when done.
+experiments/
+
+# Local database and dev artefacts.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+node_modules/
+
+# Security reports from /cso. Local only: they are a map of where to look.
+.gstack/
