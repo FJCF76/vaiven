@@ -40,6 +40,10 @@ curl -s $HOST/api/docs \
 You get back `view_url` (send this to the person — the key is in the fragment and never
 reaches the server), `read_url` (how you read it back), and the key material, once.
 
+**Sign the `sender_note` with the sender's name.** The person opening the link sees an
+unfamiliar domain with a secret in the URL. The note is the only place that can tell them
+who this is from, and "who sent me this" is the first thing they will want to know.
+
 **Publishing a big page?** Write the HTML to a file and send it raw, which avoids
 JSON-escaping a whole document:
 
