@@ -140,6 +140,29 @@ then priority. Completed items move to the bottom.
 
 ## Documentation
 
+- **The README's test count is written by hand and has drifted twice.**
+  **Priority:** P3
+  Every time tests are added it becomes a lie, and it is the kind of lie that makes a reader
+  distrust the rest of the file. Generate it, drop the number, or assert it in a test.
+
+- **`upstream_error` (502) is declared and never thrown.**
+  **Priority:** P3
+  `src/errors.ts` defines it; nothing raises it. `guide/errors.md` correctly omits it, so the
+  documentation is right and the code carries a dead branch — but the two can drift apart
+  silently, which is the pattern this release spent its time on.
+
+- **The design doc describes an older authorization model than the code implements.**
+  **Priority:** P2
+  A13 in `docs/designs/vaiven-v1.md` names key mint/revoke, delete and `?force=1` as tenant
+  scope. `auth.ts` is narrower: a document key has exactly three capabilities — `doc.read`,
+  `state.write`, `events.append` — and everything else is tenant scope. guide.md,
+  guide/errors.md and the code now agree; the design doc does not.
+
+- **`gstack-version-bump` rewrites package.json with 2-space indentation.**
+  **Priority:** P3
+  The repo uses tabs, so a one-field version change arrives as a 42-line diff. Worked around
+  by hand this release; worth a `.gstack/package-json-path` pin or a formatting guard.
+
 - **The design doc does not record the architecture divergences.**
   **Priority:** P2
   Server-derived events replacing the shadow cache, server-side `_vid` stamping, a
@@ -160,7 +183,13 @@ then priority. Completed items move to the bottom.
 - `config.ts` startup refusals, tested in a subprocess (13 checks). Found and fixed a real
   hole while writing them: `http` was refused only when NEITHER host was `.localhost`, so
   one `.localhost` host paired with a real one served the shell in the clear.
-  **Completed:** v0.2.0.0 (2026-08-18)
-- `bun run dev` handed back URLs on a port nothing was listening on. **Completed:** v0.2.0.0 (2026-08-18)
+  **Completed:** v0.2.1.0 (2026-08-18)
+- `bun run dev` handed back URLs on a port nothing was listening on. **Completed:** v0.2.1.0 (2026-08-18)
+- The manual named `Vaiven.render` and `mutate` and defined them nowhere, behind a link
+  nothing could fetch. **Completed:** v0.2.1.0 (2026-08-18)
+- An installed manual carried no version, so a correction could never reach anyone who had
+  already installed it. **Completed:** v0.2.1.0 (2026-08-18)
+- The guide tests reimplemented the code they were meant to test. **Completed:** v0.2.1.0 (2026-08-18)
+- A deleted field lost to a concurrent edit, silently. **Completed:** v0.2.1.0 (2026-08-18)
 - `README.md` documents install, `bun run dev`, the `.localhost` recipe, the environment,
   the test tiers and where every other doc lives. **Completed:** v0.2.0.0 (2026-08-18)

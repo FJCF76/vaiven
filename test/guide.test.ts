@@ -120,18 +120,21 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		expect(guide).toMatch(/^#\s.+$/m);
 	});
 
-	test("the substitution cannot be corrupted by $ sequences in the origin", () => {
+	test("the substitution cannot be corrupted by $ sequences in the origin", async () => {
 		// A string replacement interprets $&, $', $` and $$ INSIDE the replacement, so an
 		// origin carrying one would rewrite or truncate the manual. Config refuses such a
-		// host, and the substitution uses a replacer function; this pins the second lock.
+		// host at startup; this pins the second lock, through the real handler.
 		const hostile = "https://a$'b$&c.example";
-		const served = guide.replaceAll("$HOST", () => hostile);
+		const hostileConfig = { appOrigin: hostile } as unknown as Config;
+		const served = await (await serveGuide(hostileConfig, "/guide.md")).text();
 		expect(served).toContain(`${hostile}/guide/app-mode.md`);
 		expect(served).not.toContain("$HOST");
+		// And the document is not duplicated or truncated by the expansion.
+		expect(served.length).toBeLessThan(guide.length * 2);
 	});
 
-	test("$KEY and $DOC are deliberately left for the caller to fill in", () => {
-		const served = guide.replaceAll("$HOST", "https://vaiven.example");
+	test("$KEY and $DOC are deliberately left for the caller to fill in", async () => {
+		const served = await serve("/guide.md");
 		expect(served).toContain("$KEY");
 		expect(served).toContain("$DOC");
 	});
