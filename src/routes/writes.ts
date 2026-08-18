@@ -13,6 +13,7 @@ import { fail } from "../errors.ts";
 import { isValidId } from "../ids.ts";
 import { LIMITS, RATES, enforceRate } from "../quota.ts";
 import { queueWebhook, validateWebhookUrl } from "../webhook.ts";
+import { seedStateFromContent } from "../seed.ts";
 import {
 	EVENT_RETENTION_MS,
 	HARD_VERSION_CAP,
@@ -284,11 +285,23 @@ export async function putContent(
 		});
 	}
 
+	// A republish may introduce fields the previous version did not have. Their authored
+	// defaults become state, but nothing already stored is touched -- that is what makes
+	// republishing safe (§7's central loop).
+	const existingState = safeParse(doc.state) as Record<string, unknown>;
+	const seeded = await seedStateFromContent(content, existingState);
+	const seededText = JSON.stringify(seeded);
+	const seededBytes = byteLength(seededText);
+	const stateChanged = seededText !== doc.state;
+
 	const now = Date.now();
 	const version = writeTx(db, () => {
 		db.query(
 			"UPDATE doc_content SET content = ?, content_version = content_version + 1, bytes = ? WHERE doc_id = ?",
 		).run(content, bytes, id);
+		if (stateChanged) {
+			db.query("UPDATE docs SET state = ?, state_bytes = ? WHERE id = ?").run(seededText, seededBytes, id);
+		}
 		db.query("UPDATE docs SET updated_at = ? WHERE id = ?").run(now, id);
 		db.query("UPDATE tenants SET used_bytes = max(0, used_bytes + ?) WHERE id = ?").run(
 			bytes - current.bytes,

@@ -13,6 +13,7 @@ import { baseHeaders } from "../headers.ts";
 import { isValidId, newDocId } from "../ids.ts";
 import { LIMITS, RATES, clientIp, enforceContentLength, enforceRate } from "../quota.ts";
 import { docUrls } from "../urls.ts";
+import { seedStateFromContent } from "../seed.ts";
 import { queueWebhook } from "../webhook.ts";
 
 const UNTRUSTED =
@@ -187,7 +188,9 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 		});
 	}
 
-	const state = stampVids(body.state && typeof body.state === "object" ? body.state : {});
+	const supplied = (body.state && typeof body.state === "object" ? body.state : {}) as Record<string, unknown>;
+	// The values in the markup are the document's starting state. Supplied state wins.
+	const state = stampVids(content ? await seedStateFromContent(content, supplied) : supplied);
 	const stateText = JSON.stringify(state);
 	const stateBytes = byteLength(stateText);
 	if (stateBytes > LIMITS.stateBytes) {
@@ -341,6 +344,11 @@ function readDoc(db: Database, request: Request, url: URL, config: Config, scope
 			events,
 			next_since: doc.version,
 			warnings: safeParse(doc.warnings),
+			// The shell needs its own role before it renders anything: /c/:id needs no
+			// auth, so without this a read key would paint a fully interactive document
+			// whose every keystroke is discarded (A10).
+			mode: scope.kind === "tenant" ? "write" : scope.role === "write" ? "write" : "read",
+			actor_label: scope.kind === "tenant" ? "Claude" : scope.label,
 			...(scope.kind === "tenant" ? { keys: listKeys(db, id) } : {}),
 			...docUrls(config, id),
 			untrusted: UNTRUSTED,
