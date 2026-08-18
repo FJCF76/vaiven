@@ -83,7 +83,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
 	// Local development uses http on distinct .localhost names, which browsers already
 	// treat as separate origins and resolve to 127.0.0.1 with no hosts-file edit (A12).
-	if (scheme === "http" && !appHost.endsWith(".localhost") && !sandboxHost.endsWith(".localhost")) {
+	// BOTH hosts, not either. `&&` on the negatives meant one `.localhost` host paired with
+	// a real one started happily over plaintext, which is the arrangement the check exists
+	// to refuse: the shell reachable in the clear with a write key in its fragment.
+	if (scheme === "http" && !(appHost.endsWith(".localhost") && sandboxHost.endsWith(".localhost"))) {
 		fatal(
 			`VAIVEN_SCHEME=http is only allowed for *.localhost development hosts. Serving
        the shell over plaintext puts the write key in the URL fragment of an
