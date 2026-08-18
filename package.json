@@ -1,23 +1,23 @@
 {
-  "name": "vaiven",
-  "version": "0.2.0",
-  "private": true,
-  "type": "module",
-  "description": "Living documents between an agent and people: publish, edit, read back the diff.",
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "VAIVEN_APP_HOST=vaiven.localhost VAIVEN_SANDBOX_HOST=uc.vaiven.localhost VAIVEN_DB=./dev.sqlite VAIVEN_SCHEME=http VAIVEN_PORT=8080 VAIVEN_BIND=127.0.0.1 bun --watch src/index.ts",
-    "test": "bun test",
-    "gate": "bun run test/gate.ts",
-    "cli": "bun run src/cli.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "engines": {
-    "bun": ">=1.3.0"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "playwright": "^1.62.1",
-    "typescript": "^7.0.2"
-  }
+	"name": "vaiven",
+	"version": "0.2.0",
+	"private": true,
+	"type": "module",
+	"description": "Living documents between an agent and people: publish, edit, read back the diff.",
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"dev": "VAIVEN_APP_HOST=vaiven.localhost VAIVEN_SANDBOX_HOST=uc.vaiven.localhost VAIVEN_DB=./dev.sqlite VAIVEN_SCHEME=http VAIVEN_PORT=8080 VAIVEN_PUBLIC_PORT=8080 VAIVEN_BIND=127.0.0.1 bun --watch src/index.ts",
+		"test": "bun test",
+		"gate": "bun run test/gate.ts",
+		"cli": "bun run src/cli.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"engines": {
+		"bun": ">=1.3.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"playwright": "^1.62.1",
+		"typescript": "^7.0.2"
+	}
 }

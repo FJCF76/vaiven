@@ -41,12 +41,6 @@ then priority. Completed items move to the bottom.
 
 ## Tests
 
-- **`config.ts` startup refusals have no test.**
-  **Priority:** P1
-  `appHost === sandboxHost` is the invariant the whole security design rests on and nothing
-  executes that branch. Same for the http-outside-localhost and public-bind refusals. Needs
-  a subprocess test asserting exit code 2.
-
 - **`cli.ts` has no test at all.**
   **Priority:** P1
   The only admin surface: it mints credentials, destroys data and adjusts tenant counters.
@@ -151,5 +145,10 @@ then priority. Completed items move to the bottom.
 - The shell, the helper, and administration. **Completed:** v0.2.0.0 (2026-08-18)
 - The manual and ops. **Completed:** v0.2.0.0 (2026-08-18)
 - Security audit findings, design audit findings, QA findings. **Completed:** v0.2.0.0 (2026-08-18)
+- `config.ts` startup refusals, tested in a subprocess (13 checks). Found and fixed a real
+  hole while writing them: `http` was refused only when NEITHER host was `.localhost`, so
+  one `.localhost` host paired with a real one served the shell in the clear.
+  **Completed:** v0.2.0.0 (2026-08-18)
+- `bun run dev` handed back URLs on a port nothing was listening on. **Completed:** v0.2.0.0 (2026-08-18)
 - `README.md` documents install, `bun run dev`, the `.localhost` recipe, the environment,
   the test tiers and where every other doc lives. **Completed:** v0.2.0.0 (2026-08-18)
