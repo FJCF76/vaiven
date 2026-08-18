@@ -142,6 +142,35 @@ const afterRestore = await (await api(`/api/docs/${id}/state/versions`)).json();
 const preserved = afterRestore.versions.some((v: any) => v.version === seeded.version + 1);
 check(preserved, "the state that the restore replaced was itself snapshotted");
 
+// 4b. annotations carry their payload all the way back out.
+//
+// Regression: ISSUE-001 — `Vaiven.log(kind, payload)` reaches the server on the state-write
+// path, and the INSERT there had no payload column, so the payload was dropped between a
+// validated annotation and the stored row. Only POST /events persisted it, and nothing in
+// the product uses that route.
+// Found by /qa on 2026-08-18.
+// Report: .gstack/qa-reports/qa-report-vaiven-owncompute-com-2026-08-18.md
+{
+	const live = await (await api(`/api/docs/${id}`)).json();
+	await api(`/api/docs/${id}/state`, {
+		method: "PUT",
+		headers: { "if-match": `"${live.version}"` },
+		body: JSON.stringify({
+			state: { ...live.state, marker: "annotated" },
+			events: [{ kind: "note", note: "reviewed", payload: JSON.stringify({ at: "punch list", count: 2 }) }],
+		}),
+	});
+
+	const read = await (await api(`/api/docs/${id}?since=0`)).json();
+	const note = (read.events ?? []).find((e: any) => e.kind === "note" && e.note === "reviewed");
+	check(Boolean(note), "an annotation sent with a state write is stored");
+	check(
+		typeof note?.payload === "string" && note.payload.includes("punch list"),
+		"…and its payload survives to the read, rather than being dropped by the INSERT",
+		JSON.stringify(note ?? null),
+	);
+}
+
 // 5. delete
 await api(`/api/docs/${id}`, { method: "DELETE" });
 assertNoDrift("counters agree after delete");
