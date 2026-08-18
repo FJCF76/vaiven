@@ -247,6 +247,17 @@ then priority. Completed items move to the bottom.
   and are the model to follow.
 - **CORS on `/r/` is still listed as an open question** and was decided and shipped.
 
+## Docs
+
+- **The unit-test count in `README.md` is a hand-maintained number.** It said 233 when the
+  suite had 235; it had drifted across two releases before anyone read that line. A static
+  guard would be wrong, because many tests are generated inside loops (172 literal `test(`
+  calls produce 235 tests) — `test/config.test.ts:66` wraps one `test()` in a `for` over
+  five bad hostnames, and `test/guide.test.ts:52` does the same over five helper members.
+  Counting the source does not answer the question. Either parse `bun test` output in a
+  guard, or drop the number.
+  **Priority:** P4
+
 ## Completed
 
 - Two-origin deployment with blocking gates. **Completed:** v0.2.0.0 (2026-08-18)
