@@ -171,8 +171,8 @@ export function serveIndex(request: Request, config: Config): Response {
 <h1>Vaivén</h1>
 <p>An agent publishes a small web app. A person works in it. The agent reads back a
    diff of what they changed, from a plain URL.</p>
-<p>The manual is two screens and explains the whole system:
-   <a href="/guide.md">/guide.md</a></p>
+<p>The manual is one page and explains the whole system, with nothing to fetch after it:
+   <a href="${config.appOrigin}/guide.md">${config.appOrigin}/guide.md</a></p>
 <p>To install it as a skill:</p>
 <pre>curl --create-dirs -o ~/.claude/skills/vaiven/SKILL.md \\
   ${config.appOrigin}/guide.md</pre>

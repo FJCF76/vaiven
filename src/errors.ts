@@ -25,7 +25,7 @@ export type ErrorCode =
 	| "rate_limited"
 	| "upstream_error";
 
-const STATUS: Record<ErrorCode, number> = {
+export const STATUS: Record<ErrorCode, number> = {
 	unauthorized: 401,
 	revoked: 401,
 	read_only: 403,

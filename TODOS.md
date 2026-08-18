@@ -119,6 +119,14 @@ then priority. Completed items move to the bottom.
   version stamp — the inversion of what the stamp is for. Moot on the supported path,
   since `deploy/sync.sh` restarts the service.
 
+- **`render` repaints synchronously inside `mutate`, including for the app's own change.**
+  **Priority:** P2  ·  *documented and worked around in guide.md; the burden is still on the author*
+  That is what makes the natural painter — rebuild the list on every render — destroy the
+  field being typed into. Documented as a rule the author must follow, which works but puts
+  the burden in the wrong place. Worth considering whether the helper should skip the
+  repaint for a mutation the app itself just made, or expose the focused element so a
+  painter can preserve it.
+
 ## Product
 
 - **The sender is never named.**
