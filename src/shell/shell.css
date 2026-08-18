@@ -235,8 +235,23 @@ dialog::backdrop { background: var(--scrim); }
 	border-bottom: 1px solid var(--rule);
 }
 .panel-head h2 { font-size: 15px; margin: 0; }
-.panel-body { padding: 4px 16px 16px; max-height: 60vh; overflow-y: auto; }
-.panel-body p { font-size: 13px; color: var(--muted); }
+.panel-body { padding: var(--space-1) var(--space-4) var(--space-4); max-height: 60vh; overflow-y: auto; }
+.panel-body p { margin: var(--space-3) 0; }
+.field-label { display: block; font-size: 13px; margin: var(--space-3) 0 var(--space-2); }
+.panel-body textarea {
+	width: 100%;
+	font: inherit;
+	font-size: 14px;
+	padding: var(--space-2);
+	border: 1px solid var(--rule);
+	border-radius: 3px;
+	background: var(--surface);
+	color: var(--ink);
+	resize: vertical;
+}
+.panel-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.panel-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+.panel-body > p { font-size: 13px; color: var(--muted); }
 .event { display: grid; grid-template-columns: 4.25rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .event:last-child { border-bottom: 0; }
 .event .when { font-family: var(--mono); font-size: 11px; color: var(--muted); }

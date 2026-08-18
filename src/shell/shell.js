@@ -277,6 +277,9 @@ frame.addEventListener("load", () => {
 	if (loadCount > expectedLoads) {
 		frameReady = false;
 		frame.remove();
+		// Otherwise everything below the notice is blank ground with no route back.
+		skeleton.hidden = false;
+		skeleton.textContent = "The document was closed. Reload the page to open it again.";
 		showNotice(
 			"This document tried to navigate somewhere else, so it has been closed. Nothing was sent to it.",
 			null,
@@ -439,8 +442,8 @@ function renderChrome() {
 			"span",
 			null,
 			mode === "write"
-				? `Edits here are recorded as “${label}” and shared with whoever sent you this link. Vaivén.`
-				: `You can read this document but not change it. Nothing you do here is recorded. Vaivén.`,
+				? `Edits here are recorded as “${label}” and shared with whoever sent you this link. Anyone who has the link can edit it too. Vaivén.`
+				: `You can read this document but not change it. Nothing you do here is recorded. Anyone who has the link can read it too. Vaivén.`,
 		),
 	);
 
@@ -523,8 +526,48 @@ function renderRecord(events) {
 
 // ----------------------------------------------------------------- done for now
 
+/**
+ * The exit interaction, which the design doc calls the strongest moment in the product:
+ * the person says they are finished and, optionally, what they changed. It was a native
+ * `prompt()`, which Chrome renders as "vaiven.owncompute.com says:" — the browser
+ * affordance most associated with scams, unstyled and untranslatable, on the one page
+ * whose whole problem is convincing a stranger it is safe.
+ */
+const doneDialog = document.createElement("dialog");
+const doneNote = document.createElement("textarea");
+{
+	const head = el("div", "panel-head");
+	const cancel = el("button", null, "Not yet");
+	cancel.addEventListener("click", () => doneDialog.close());
+	head.append(el("h2", null, "Send this back"), cancel);
+
+	const body = el("div", "panel-body");
+	const label = el("label", "field-label", "Anything you want to say about what you changed?");
+	label.setAttribute("for", "vaiven-done-note");
+	doneNote.id = "vaiven-done-note";
+	doneNote.rows = 3;
+	doneNote.placeholder = "Optional";
+
+	const send = el("button", "primary", "Send");
+	send.addEventListener("click", () => doneDialog.close("send"));
+	const actions = el("div", "panel-actions");
+	actions.append(send);
+
+	body.append(label, doneNote, actions);
+	doneDialog.append(head, body);
+	document.body.append(doneDialog);
+}
+
 doneButton.addEventListener("click", async () => {
-	const note = prompt("Anything you want to say about what you changed? (optional)") ?? "";
+	doneNote.value = "";
+	doneDialog.showModal();
+	doneNote.focus();
+	const answered = await new Promise((resolve) =>
+		doneDialog.addEventListener("close", () => resolve(doneDialog.returnValue === "send"), { once: true }),
+	);
+	if (!answered) return;
+
+	const note = doneNote.value.trim();
 	writer.flush("done");
 	await api("/events", {
 		method: "POST",
