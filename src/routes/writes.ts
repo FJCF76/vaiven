@@ -177,14 +177,31 @@ export async function putState(
 		).run(id, version, live.state, live.state_bytes, scope.actor, now, session);
 
 		const insertEvent = db.query(
-			`INSERT INTO events (doc_id, version, actor, kind, field, from_value, to_value, op, item, note, ts)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO events (doc_id, version, actor, kind, field, from_value, to_value, op, item, note, payload, ts)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
 		for (const event of derived) {
-			insertEvent.run(id, version, scope.actor, "edit", event.field, event.from ?? null, event.to ?? null, event.op ?? null, event.item ?? null, null, now);
+			insertEvent.run(id, version, scope.actor, "edit", event.field, event.from ?? null, event.to ?? null, event.op ?? null, event.item ?? null, null, null, now);
 		}
 		for (const annotation of annotations) {
-			insertEvent.run(id, version, scope.actor, annotation.kind, null, null, null, null, null, annotation.note ?? null, now);
+			// The payload column was simply absent from this statement, so `Vaiven.log(kind,
+			// payload)` — which reaches the server on THIS path, not POST /events — arrived
+			// with its payload intact and was dropped on the way into the row. Only the
+			// events route persisted it, and nothing in the product uses that route.
+			insertEvent.run(
+				id,
+				version,
+				scope.actor,
+				annotation.kind,
+				null,
+				null,
+				null,
+				null,
+				null,
+				annotation.note ?? null,
+				annotation.payload ? String(annotation.payload) : null,
+				now,
+			);
 		}
 
 		// The tenant budget was passed in but never compared against the tenant's actual
