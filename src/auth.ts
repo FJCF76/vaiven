@@ -125,8 +125,16 @@ interface DocKeyRow {
  * One code path for both key kinds. Every subsequent query carries `tenant_id` or `doc_id`
  * in its WHERE clause — isolation is never a filter applied in memory.
  */
-export function resolve(db: Database, plaintext: string | null | undefined): Scope | null {
-	if (!plaintext) return null;
+/** Why a key did not resolve. A9: `revoked` and `disabled` exist so an agent is not sent
+ *  to re-check a key that is fine. Returning a bare null for all three collapsed them back
+ *  into `unauthorized`, which is the conflation the amendment was written to remove. */
+export type ResolveFailure = "unknown" | "revoked" | "disabled";
+
+export function resolveWithReason(
+	db: Database,
+	plaintext: string | null | undefined,
+): { scope: Scope } | { failure: ResolveFailure } {
+	if (!plaintext) return { failure: "unknown" };
 	const hash = hashKey(plaintext);
 
 	const tenant = db
@@ -134,8 +142,8 @@ export function resolve(db: Database, plaintext: string | null | undefined): Sco
 		.get(hash);
 
 	if (tenant) {
-		if (tenant.disabled) return null;
-		return { kind: "tenant", tenantId: tenant.id, actor: "claude" };
+		if (tenant.disabled) return { failure: "disabled" };
+		return { scope: { kind: "tenant", tenantId: tenant.id, actor: "claude" } };
 	}
 
 	// A13: the join is load-bearing. Without it `vaiven tenant disable` stops the tenant
@@ -152,19 +160,27 @@ export function resolve(db: Database, plaintext: string | null | undefined): Sco
 		)
 		.get(hash);
 
-	if (!key) return null;
-	if (key.revoked_at !== null) return null;
-	if (key.tenant_disabled) return null;
+	if (!key) return { failure: "unknown" };
+	if (key.revoked_at !== null) return { failure: "revoked" };
+	if (key.tenant_disabled) return { failure: "disabled" };
 
 	return {
-		kind: "doc",
-		tenantId: key.tenant_id,
-		docId: key.doc_id,
-		keyId: key.id,
-		role: key.role,
-		label: key.label,
-		actor: key.label,
+		scope: {
+			kind: "doc",
+			tenantId: key.tenant_id,
+			docId: key.doc_id,
+			keyId: key.id,
+			role: key.role,
+			label: key.label,
+			actor: key.label,
+		},
 	};
+}
+
+/** The original shape, for callers that only need to know whether it resolved. */
+export function resolve(db: Database, plaintext: string | null | undefined): Scope | null {
+	const result = resolveWithReason(db, plaintext);
+	return "scope" in result ? result.scope : null;
 }
 
 // --------------------------------------------------------------- last_seen, throttled

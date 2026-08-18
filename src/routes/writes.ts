@@ -274,12 +274,19 @@ export async function putState(
 		.query<{ content_version: number }, [string]>("SELECT content_version FROM doc_content WHERE doc_id = ?")
 		.get(id)!.content_version;
 
+	// `next_since` is an EVENT ID everywhere else it is produced (api.ts, read.ts). This
+	// was sending a document VERSION into the same field, so a receiver following the
+	// documented "echo next_since" pattern skipped or replayed events depending on which
+	// number happened to be larger.
+	const newestEvent =
+		db.query<{ id: number | null }, [string]>("SELECT max(id) AS id FROM events WHERE doc_id = ?").get(id)?.id ?? 0;
+
 	queueWebhook(db, doc, {
 		doc_id: id,
 		version: result.version,
 		state: next,
 		events: derived,
-		next_since: result.version,
+		next_since: newestEvent,
 		untrusted: UNTRUSTED,
 	});
 

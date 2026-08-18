@@ -5,7 +5,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { Config } from "../config.ts";
-import { bearerFrom, can, insertDocKey, resolve, touchKey, type Capability, type Scope } from "../auth.ts";
+import { bearerFrom, can, insertDocKey, resolveWithReason, touchKey, type Capability, type Scope } from "../auth.ts";
 import { byteLength, writeTx } from "../db.ts";
 import { fieldWarnings, safeParse, stampVids, clamp } from "../events.ts";
 import { prepareContent } from "../inject.ts";
@@ -95,13 +95,27 @@ function requireScope(db: Database, request: Request, config: Config): Scope {
 			hint: `Send it as "Authorization: Bearer <key>". A tenant key comes from \`vaiven tenant create\`; a document key comes from the response that created the document.`,
 		});
 	}
-	const scope = resolve(db, token);
-	if (!scope) {
+	const resolved = resolveWithReason(db, token);
+	if (!("scope" in resolved)) {
 		anonymous();
+		// A9: say WHICH failure it is. Reporting a revoked key as `unauthorized` sends the
+		// agent off to re-check a key that is perfectly well formed, and reporting a
+		// disabled tenant the same way hides an operator action behind a key problem.
+		if (resolved.failure === "revoked") {
+			fail("revoked", "That key has been revoked.", {
+				hint: "The key is well formed; someone turned it off. Ask whoever owns the document for a new one, or mint one with `vaiven key add <doc>`.",
+			});
+		}
+		if (resolved.failure === "disabled") {
+			fail("disabled", "This tenant is disabled.", {
+				hint: "Nothing is wrong with the key. An operator disabled the tenant; `vaiven tenant enable <id>` turns it back on.",
+			});
+		}
 		fail("unauthorized", "That key is not valid.", {
-			hint: "It may have been revoked, or it may belong to a disabled tenant. Mint a new one with `vaiven key add`, or check `vaiven key list <doc>`.",
+			hint: "Check that you copied the whole key. A tenant key comes from `vaiven tenant create`; a document key comes from the response that created the document.",
 		});
 	}
+	const scope = resolved.scope;
 	touchKey(db, scope, clientIp(request, config));
 	return scope;
 }
