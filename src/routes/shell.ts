@@ -5,7 +5,7 @@
 // two origins it needs, and shell.js fills everything else in with textContent.
 
 import type { Config } from "../config.ts";
-import { shellHeaders } from "../headers.ts";
+import { SANDBOX_ATTRIBUTE, shellHeaders } from "../headers.ts";
 
 export async function serveShell(
 	_request: Request,
@@ -15,7 +15,7 @@ export async function serveShell(
 	// The document id comes from the URL the script already has, and the key never leaves
 	// the fragment. Nothing user-controlled is interpolated into this markup.
 	const html = `<!doctype html>
-<html lang="en" data-sandbox-origin="${config.sandboxOrigin}">
+<html lang="en" data-sandbox-origin="${config.sandboxOrigin}" data-sandbox-flags="${SANDBOX_ATTRIBUTE}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

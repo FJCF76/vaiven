@@ -139,7 +139,10 @@ async function gateBrowser(browser: Browser): Promise<void> {
 
 	// The iframe attribute must not be narrower than the header (A4's union trap).
 	const shellHtml = await (await fetch(`${config.appOrigin}/d/probe`)).text();
-	const attr = shellHtml.match(/sandbox="([^"]*)"/)?.[1] ?? "";
+	// The shell creates the frame in script, so the flag set travels in the markup and is
+	// applied to the element from there. Asserting it here keeps the two definitions from
+	// drifting apart, which is the whole point of A4's trap.
+	const attr = shellHtml.match(/data-sandbox-flags="([^"]*)"/)?.[1] ?? "";
 	report(attr === SANDBOX_ATTRIBUTE, "iframe sandbox attribute matches the header flags",
 		attr === SANDBOX_ATTRIBUTE ? "" : `attr: "${attr}"\n         hdr:  "${SANDBOX_ATTRIBUTE}"`);
 
