@@ -1,0 +1,124 @@
+# TODOS
+
+What is known to be missing, from the audits that ran during `/ship`. Grouped by area,
+then priority. Completed items move to the bottom.
+
+## Verification
+
+- **The Phase 4 human gate.**
+  **Priority:** P0
+  Hand the write URL to someone who has never seen the system, with no explanation. They
+  must say unprompted what the document is, that their changes saved, and that their edits
+  are recorded under a name. No test can stand in for this, and the plan makes it a
+  blocking gate.
+
+- **The cold-surface test on `guide.md`.**
+  **Priority:** P0
+  A fresh agent, one URL, nothing installed. It must state what the document is, what
+  changed and who changed it. Sharper half: hand it the `/r/` URL first and require the
+  `guide` field alone to bootstrap it. Every retry is a guide bug.
+
+- **Chaos harness (T14).**
+  **Priority:** P1
+  `test/invariants.ts` checks the invariants and passes; nothing kills the server
+  underneath it. Needs N virtual clients, a process that SIGKILLs the server every ~20s, a
+  backup loop and CLI churn, with the invariants asserted continuously.
+
+- **Capacity measurement.**
+  **Priority:** P2
+  The plan's target is 200 concurrent open shells across 50 documents at p95 under 200 ms.
+  Never measured.
+
+- **Coalescing edge cases.**
+  **Priority:** P2
+  IME composition, paste, autofill, `type=range` drag, type-then-undo, interleaved edits
+  across two fields. IME matters most: every composition update fires `input`.
+
+- **Concurrency at the DB layer.**
+  **Priority:** P2
+  Two connections forcing `SQLITE_BUSY_SNAPSHOT`. The current concurrency coverage is at
+  the HTTP layer only.
+
+## Tests
+
+- **`config.ts` startup refusals have no test.**
+  **Priority:** P1
+  `appHost === sandboxHost` is the invariant the whole security design rests on and nothing
+  executes that branch. Same for the http-outside-localhost and public-bind refusals. Needs
+  a subprocess test asserting exit code 2.
+
+- **`cli.ts` has no test at all.**
+  **Priority:** P1
+  The only admin surface: it mints credentials, destroys data and adjusts tenant counters.
+  A `doc delete` counter leak was already found and fixed here once, by reading.
+
+- **Webhook delivery is untested.**
+  **Priority:** P1
+  The SSRF address table is thorough; the delivery half is not. Needs a local receiver
+  asserting `Vaiven-Signature: sha256=<hmac>` over the exact bytes sent, the retry count,
+  the `webhook_failed` event, and the in-flight guard.
+
+- **Read-only enforcement is not tested in a browser.**
+  **Priority:** P1
+  No test opens a document with a read key in Chromium. A regression hands a read-key
+  holder a live form whose every keystroke is silently discarded.
+
+- **Version and event pruning are untested.**
+  **Priority:** P2
+  `invariants.ts` only asserts the counters agree. Pruning that kept nothing but the newest
+  version would keep them perfectly balanced while destroying the safety net.
+
+- **`request_id` replay has no test.**
+  **Priority:** P2
+  The path was unreachable until this release and is now live. Same id twice must return
+  the same version and must not duplicate annotations.
+
+- **`touchKeyById` is untested.**
+  **Priority:** P3
+  The throttle, the 20-marker cap, and that no raw address is ever stored.
+
+- **`inject.ts` is only half covered.**
+  **Priority:** P3
+  The no-doctype path, meta-CSP stripping and `<base>` stripping are unguarded, and A14
+  exists because a shortcut once put every document into quirks mode.
+
+## Product
+
+- **The sender is never named.**
+  **Priority:** P1
+  The disclosure says "whoever sent you this link" because no field can say more. For a
+  stranger opening a secret URL on an unfamiliar domain, "who is this from" is the first
+  question. A `sender_name` column is small; it is a product decision about what the API
+  asks for.
+
+- **`POST /api/docs` will not accept raw `text/html`.**
+  **Priority:** P2
+  `PUT /content` does. So the *first* publish still has to JSON-encode a whole document,
+  which A12 names as the highest-probability agent failure in the flow.
+
+- **The webhook only fires from `putState`.**
+  **Priority:** P2
+  `putContent` and `restoreVersion` both bump the version and deliver nothing. A change
+  arriving during an in-flight delivery is dropped rather than coalesced.
+
+## Documentation
+
+- **The design doc does not record the architecture divergences.**
+  **Priority:** P2
+  Server-derived events replacing the shadow cache, server-side `_vid` stamping, a
+  hand-rolled diff instead of microdiff, Playwright instead of Puppeteer, `state`
+  deliberately exempt from A11 clamping. Each is reasoned in a source comment and a commit
+  message; the doc still asserts the opposite. The ops divergences are recorded properly
+  and are the model to follow.
+- **CORS on `/r/` is still listed as an open question** and was decided and shipped.
+- **`README.md` is two lines** and documents nothing: no install, no `bun run dev`, no
+  `.localhost` recipe.
+
+## Completed
+
+- Two-origin deployment with blocking gates. **Completed:** v0.2.0.0 (2026-08-18)
+- Schema, ids, and one authorization decision. **Completed:** v0.2.0.0 (2026-08-18)
+- The API and the read-back. **Completed:** v0.2.0.0 (2026-08-18)
+- The shell, the helper, and administration. **Completed:** v0.2.0.0 (2026-08-18)
+- The manual and ops. **Completed:** v0.2.0.0 (2026-08-18)
+- Security audit findings, design audit findings, QA findings. **Completed:** v0.2.0.0 (2026-08-18)

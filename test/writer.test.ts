@@ -298,3 +298,63 @@ describe("threeWayMerge, nested", () => {
 		expect(threeWayMerge(base, ours, theirs)).toEqual({ a: { b: 1, extra: true }, c: 9 });
 	});
 })
+
+describe("the idempotency key (A7)", () => {
+	// Regression: the key was minted inside send(), which the retry timer re-enters, so
+	// every attempt carried a NEW id. The server's replay check could never match, and the
+	// annotations from the attempt that HAD committed were inserted a second time —
+	// someone pressing "Done for now" during a flaky moment recorded as done twice, which
+	// is precisely what the key exists to prevent.
+	test("is held across retries, so the server can recognise a replay", async () => {
+		let n = 0;
+		const h = harness(async () => {
+			n++;
+			return n < 3
+				? { ok: false, error: { code: "offline", message: "offline", fatal: false } }
+				: { ok: true, version: 2 };
+		});
+		const writer = new Writer(h.deps);
+		writer.adopt({ a: "0" }, 1);
+
+		writer.localChange({ a: "1" }, [{ kind: "done", note: "sent once" }]);
+		await h.advance(500);
+		await h.advance(600);
+		await h.advance(1600);
+
+		expect(h.puts.length).toBe(3);
+		expect(new Set(h.puts.map((p) => p.requestId)).size).toBe(1);
+	});
+
+	test("a new batch after a success gets a new key", async () => {
+		const h = harness();
+		const writer = new Writer(h.deps);
+		writer.adopt({ a: "0" }, 1);
+
+		writer.localChange({ a: "1" });
+		await h.advance(500);
+		writer.localChange({ a: "2" });
+		await h.advance(500);
+
+		expect(h.puts.length).toBe(2);
+		expect(h.puts[0].requestId).not.toBe(h.puts[1].requestId);
+	});
+
+	test("a rebase after a conflict gets a new key, because it is a different write", async () => {
+		let n = 0;
+		const h = harness(async () => {
+			n++;
+			return n === 1
+				? { ok: false, conflict: { version: 9, state: { a: "0", theirs: "x" } } }
+				: { ok: true, version: 10 };
+		});
+		const writer = new Writer(h.deps);
+		writer.adopt({ a: "0" }, 1);
+
+		writer.localChange({ a: "1" });
+		await h.advance(500);
+		await h.advance(500);
+
+		expect(h.puts.length).toBe(2);
+		expect(h.puts[0].requestId).not.toBe(h.puts[1].requestId);
+	});
+});

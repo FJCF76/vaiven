@@ -901,7 +901,7 @@ What actually runs, and against what:
 
 | Suite | What it covers | Where it runs |
 |---|---|---|
-| `bun test` (142) | events and coalescing, the writer state machine, auth, the SSRF address table, the limiter, seeding | in process |
+| `bun test` (166) | events and coalescing, the writer state machine, auth, the SSRF address table, the limiter, seeding | in process |
 | `bun run typecheck` | the whole tree, strict, `noUncheckedIndexedAccess` | in process |
 | `test/negatives.ts` (28) | privilege escalation, cross-document and cross-tenant access, the host partition, the `/r/` oracle, preconditions | live HTTPS |
 | `test/invariants.ts` (10) | byte counters recomputed from rows across create, write, republish, restore, delete | live, against the server's own database |
@@ -923,13 +923,36 @@ Not yet built: the chaos harness (T14) and the capacity measurement. The invaria
 that chaos would drive exists and passes; what is missing is the kill-and-restart loop
 around it.
 
+#### DIVERGENCES — where the implementation won and this document did not follow
+
+Recorded because the ops divergences above were written down and the architecture ones were
+not, which left this document asserting the opposite of the shipped code in six places. In
+every case the reasoning lives in a source comment and a commit message.
+
+| This document says | The code does | Why the code is right |
+|---|---|---|
+| A1: the shell keeps a shadow-value cache with five invalidation points | Events are derived SERVER-side by diffing stored state against incoming state | A hostile page can no longer author its own audit log. `edit` is excluded from the kinds a client may assert. Miss one invalidation in a client cache and the product's core output is silently wrong. |
+| A1: the shell stamps `_vid` | The server stamps and reconciles `_vid` | A raw API client that never echoes a vid still gets identity-keyed events instead of add/remove churn. |
+| A1: use `microdiff` for the structural walk | Hand-rolled walk in `src/events.ts` | microdiff is index-keyed, which is the exact thing A1 was rewritten to stop doing. |
+| Phase 0: Puppeteer | Playwright | Already the project's browser dependency; nothing in the gates needs Puppeteer. |
+| A4: the link dialog shows the destination host | It shows the whole URL | Showing the host let content encode the person's answers into the query string of a benign-looking domain. |
+| A11: hard-clamp every string in `state` at the read boundary | `state` is returned unclamped; events are clamped at derivation | Clamping state corrupts the payload the product exists to deliver. Reads now report `state_bytes` so a reader can decide before ingesting. |
+
+Also shipped without a plan item, and worth naming: `src/seed.ts` (server-side state seeding
+from authored `value=` attributes), the split of `routes/html.ts` into five route modules,
+and `tsconfig.json` with a typecheck script, added after an undefined constant shipped as a
+500 on every state write because `bun build` does not check types.
+
 ## Open Questions
 
 - **Backup target.** A same-box `.backup` protects against a bad write, not against losing
   the box. Litestream to S3 whenever the data starts mattering.
 - **Self-hostable by others, or one instance?** A12's local-development work and a README
   only make sense under the first. The plan currently implies both.
-- **CORS on `/r/`.**
+- ~~**CORS on `/r/`.**~~ **Decided and shipped:** `access-control-allow-origin: *`. The URL
+  is a bearer secret, so CORS protects nothing that the secret does not already gate, and
+  I2 wants the read reachable from anything that can issue a GET — including a browser on
+  another origin. Reasoning is inline at `src/routes/read.ts`.
 
 ## Implementation Tasks
 
