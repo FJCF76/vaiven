@@ -79,6 +79,24 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		);
 	}
 
+	// A hostname is a narrow thing, and this one is spliced into places where a malformed
+	// value fails OPEN rather than loudly: the `frame-ancestors` and `frame-src` directives,
+	// every URL handed to an agent, and the manual served to a cold reader. A `$` in
+	// particular is interpreted as a replacement pattern by String.replace, so an origin
+	// containing `$'` silently truncates the served manual. Refuse it at the door.
+	for (const [name, value] of [
+		["VAIVEN_APP_HOST", appHost],
+		["VAIVEN_SANDBOX_HOST", sandboxHost],
+	] as const) {
+		if (!/^[a-z0-9.-]+$|^\[[0-9a-f:.]+\]$/.test(value)) {
+			fatal(
+				`${name}="${value}" is not a hostname. It is spliced into CSP directives and
+       into every URL handed out, where a malformed value fails open rather than
+       loudly. Use letters, digits, dots and hyphens.`,
+			);
+		}
+	}
+
 	const scheme = (env.VAIVEN_SCHEME ?? "https").trim() === "http" ? "http" : "https";
 
 	// Local development uses http on distinct .localhost names, which browsers already
