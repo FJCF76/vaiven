@@ -2,6 +2,19 @@
    content, which is what makes it a safe place to tell someone what is being recorded. */
 
 :root {
+	/* The landing page declared this and the product did not, so in dark mode the dialog,
+	   the panel's scrollbar and the native prompt all rendered as light UA chrome on a
+	   dark page. */
+	color-scheme: light dark;
+
+	/* One spacing scale. The five stacked strips had five unrelated vertical paddings
+	   (6, 7, 9, 12, 28) and read as five unrelated components rather than one chrome. */
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--gutter: 14px;
+
 	--ground: #f7f8f9;
 	--surface: #ffffff;
 	--ink: #16212b;
@@ -12,6 +25,8 @@
 	--warn: #8a5a00;
 	--warn-soft: #fdf3e0;
 	--danger: #a03232;
+	--on-accent: #ffffff;
+	--scrim: rgba(0, 0, 0, .4);
 	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	--sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -28,6 +43,8 @@
 		--warn: #e0b062;
 		--warn-soft: #2b2418;
 		--danger: #e08585;
+		--on-accent: #06231f;
+		--scrim: rgba(0, 0, 0, .6);
 	}
 }
 
@@ -61,7 +78,7 @@ body {
 	flex-wrap: wrap;
 	gap: 4px 12px;
 	min-height: 44px;
-	padding: 6px 14px;
+	padding: var(--space-2) var(--gutter);
 	background: var(--surface);
 	border-bottom: 1px solid var(--rule);
 }
@@ -70,7 +87,10 @@ body {
 .identity { display: flex; flex-direction: column; min-width: 0; flex: 1 1 11rem; }
 
 .title {
-	font-size: 14px;
+	/* Was 14px, one pixel under body copy and the same size as the optional sender note:
+	   the string that tells a stranger what they are looking at, styled below the page's
+	   own body text. */
+	font-size: 16px;
 	font-weight: 600;
 	white-space: nowrap;
 	overflow: hidden;
@@ -92,11 +112,23 @@ body {
 	color: var(--muted);
 	white-space: nowrap;
 }
-.status[data-kind="saving"], .status[data-kind="retrying"] { color: var(--warn); }
+/* Every state a person needs to tell apart at a glance now looks different. "Unsaved
+   changes" and "Saved 3:42 PM" used to be pixel-identical apart from the words, and
+   "Saving…" (fine) looked exactly like "Not saved — retrying" (not fine). */
+.status[data-kind="dirty"] { color: var(--ink); }
+.status[data-kind="saving"] { color: var(--muted); }
+.status[data-kind="retrying"] { color: var(--warn); font-weight: 600; }
 .status[data-kind="blocked"] { color: var(--danger); font-weight: 600; }
+.status[data-kind="readonly"] {
+	color: var(--muted);
+	border: 1px solid var(--rule);
+	border-radius: 3px;
+	padding: 1px 6px;
+}
 
 button {
-	font-family: var(--mono);
+	/* Mono is reserved for machine state: the save status, field names, timestamps.
+	   "Done for now" is something a person does. */
 	font-size: 12px;
 	border-radius: 3px;
 	cursor: pointer;
@@ -114,9 +146,10 @@ button {
 
 button:hover { border-color: var(--muted); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:active { transform: translateY(1px); }
 button[disabled] { opacity: .45; cursor: default; }
 
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.link { border-color: transparent; color: var(--muted); text-decoration: underline; padding: 7px 4px; }
 
 /* ------------------------------------------------------------------------ notices */
@@ -125,7 +158,7 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 9px 14px;
+	padding: var(--space-2) var(--gutter);
 	font-size: 13px;
 	background: var(--warn-soft);
 	color: var(--warn);
@@ -137,7 +170,7 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
 .disclosure {
-	padding: 7px 14px;
+	padding: var(--space-2) var(--gutter);
 	font-size: 12px;
 	color: var(--muted);
 	background: var(--ground);
@@ -149,7 +182,7 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 }
 
 .sender {
-	padding: 12px 14px;
+	padding: var(--space-3) var(--gutter);
 	font-size: 14px;
 	border-bottom: 1px solid var(--rule);
 	background: var(--surface);
@@ -162,13 +195,19 @@ iframe {
 	display: block;
 	width: 100%;
 	border: 0;
-	background: var(--surface);
+	/* NOT var(--surface). The document inside is model-authored HTML written the way
+	   artifacts are written: `color` set, `background` left alone, light assumed. Painting
+	   this ground dark for a viewer whose OS is dark put near-black text on a near-black
+	   field and made every label in the document invisible — while the shell's own chrome
+	   around it stayed perfectly legible, so nothing looked broken. The frame is the
+	   author's canvas. An author who wants a dark page paints over this. */
+	background: #fff;
 	/* Grown to content height by the resize protocol. */
 	height: 60vh;
 }
 iframe[hidden] { display: none; }
 
-.skeleton { padding: 28px 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.skeleton { padding: 28px var(--gutter); color: var(--muted); font-family: var(--mono); font-size: 12px; }
 
 /* ------------------------------------------------------------------- terminal page */
 
@@ -187,7 +226,7 @@ dialog {
 	width: calc(100vw - 2rem);
 	padding: 0;
 }
-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+dialog::backdrop { background: var(--scrim); }
 .panel-head {
 	display: flex;
 	justify-content: space-between;
@@ -198,12 +237,22 @@ dialog::backdrop { background: rgba(0, 0, 0, .4); }
 .panel-head h2 { font-size: 15px; margin: 0; }
 .panel-body { padding: 4px 16px 16px; max-height: 60vh; overflow-y: auto; }
 .panel-body p { font-size: 13px; color: var(--muted); }
-.event { display: grid; grid-template-columns: 5.5rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.event { display: grid; grid-template-columns: 4.25rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .event:last-child { border-bottom: 0; }
 .event .when { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .event .what { min-width: 0; overflow-wrap: anywhere; }
 .event .field { font-family: var(--mono); font-size: 12px; }
 .event .from { color: var(--muted); text-decoration: line-through; }
+.event .to { font-weight: 600; }
+/* Attribution is what the panel exists to show; it was inheriting the timestamp style. */
+.event .by { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.event .payload {
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--muted);
+	margin-top: 2px;
+	overflow-wrap: anywhere;
+}
 
 @media (prefers-reduced-motion: reduce) {
 	* { transition: none !important; animation: none !important; }

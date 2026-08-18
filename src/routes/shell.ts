@@ -19,7 +19,7 @@ export async function serveShell(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vaiven</title>
+<title>Vaivén</title>
 <link rel="stylesheet" href="/shell.css">
 </head>
 <body>

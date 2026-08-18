@@ -53,6 +53,10 @@ curl -s -X PUT "$HOST/api/docs/$DOC/content" \
 
 **Ordinary HTML. Give every field a `name`.** That is the entire convention.
 
+The shell already shows the title you set, the sender note, who the person is editing as,
+and the save state, in a bar above your page. Do not rebuild any of that inside `content` —
+your page starts below it.
+
 ```html
 <input name="fee" value="18400">
 <input type="checkbox" name="urgent">
