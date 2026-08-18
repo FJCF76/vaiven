@@ -4,7 +4,9 @@
 // directive here is a category of app that can or cannot be built. A6 established that
 // the shell needs its own policy, because it is the page that holds the write key.
 //
-// Both policies are asserted byte-exactly in test/headers.test.ts. A typo in
+// Both policies are asserted byte-exactly in test/headers.test.ts against literal
+// expected strings, NOT against these functions — comparing the served header to the
+// module that produced it is a tautology that moves with any typo. A typo in
 // `frame-ancestors` fails open and nothing else in the system would notice.
 
 import type { Config } from "./config.ts";

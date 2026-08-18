@@ -5,7 +5,13 @@
 // partition, a forged header, a key acting outside its scope — and an in-process assertion
 // would be testing a different thing than the one that ships.
 //
-//   bun run test/negatives.ts     (against a running server, with VAIVEN_TENANT_KEY set)
+//   bun run test/negatives.ts
+//     env: VAIVEN_TENANT_KEY   a tenant key
+//          VAIVEN_TENANT_KEY_B a SECOND tenant's key, from `vaiven tenant create`
+//
+// The second key is not optional. Cross-tenant isolation is the claim that matters most
+// in a multitenant system, and for a long time this file asserted it with one tenant —
+// which cannot test it at all, while the design doc claimed the coverage existed.
 
 import { loadConfig } from "../src/config.ts";
 
@@ -13,6 +19,13 @@ const config = loadConfig();
 const tenantKey = process.env.VAIVEN_TENANT_KEY;
 if (!tenantKey) {
 	console.error("Set VAIVEN_TENANT_KEY.");
+	process.exit(2);
+}
+
+const otherTenantKey = process.env.VAIVEN_TENANT_KEY_B;
+if (!otherTenantKey) {
+	console.error("Set VAIVEN_TENANT_KEY_B to a SECOND tenant's key (`vaiven tenant create`).");
+	console.error("Cross-tenant isolation cannot be tested with one tenant.");
 	process.exit(2);
 }
 
@@ -157,6 +170,62 @@ console.log("\nINPUT — malformed and hostile bodies");
 	check(!forged, "a forged edit event is refused, so the log cannot be written by the page");
 }
 
+console.log("\nTENANCY — a tenant cannot reach another tenant's document");
+{
+	const asOther = (init: RequestInit = {}) => ({
+		...init,
+		headers: {
+			authorization: `Bearer ${otherTenantKey}`,
+			"content-type": "application/json",
+			...(init.headers ?? {}),
+		},
+	});
+
+	// Every route that takes a document id, exercised with a valid key from the wrong
+	// tenant. A 404 rather than a 403 is deliberate: existence is itself information.
+	check((await status(`/api/docs/${A.id}`, asOther())) === 404, "another tenant cannot read the document");
+	check(
+		(await status(`/api/docs/${A.id}/state`, asOther({ method: "PUT", headers: { "if-match": '"1"' }, body: '{"state":{}}' }))) === 404,
+		"…cannot write its state",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/content`, asOther({ method: "PUT", headers: { "content-type": "text/html" }, body: "<!doctype html><html><head></head><body>x</body></html>" }))) === 404,
+		"…cannot republish it",
+	);
+	check((await status(`/api/docs/${A.id}`, asOther({ method: "DELETE" }))) === 404, "…cannot delete it");
+	check(
+		(await status(`/api/docs/${A.id}/keys`, asOther({ method: "POST", body: '{"label":"stolen","role":"read"}' }))) === 404,
+		"…cannot mint a key on it",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/keys/${A.writeKeyId}`, asOther({ method: "DELETE" }))) === 404,
+		"…cannot revoke its keys",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/state/versions`, asOther())) === 404,
+		"…cannot read its history",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/state/restore`, asOther({ method: "POST", body: '{"version":1}' }))) === 404,
+		"…cannot restore it",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/events`, asOther({ method: "POST", body: '{"events":[{"kind":"note","note":"x"}]}' }))) === 404,
+		"…cannot append to its log",
+	);
+	check(
+		(await status(`/api/docs/${A.id}/webhook`, asOther({ method: "PUT", body: '{"webhook":"https://example.com/h"}' }))) === 404,
+		"…cannot point its webhook anywhere",
+	);
+
+	// And the listing must not mention it either.
+	const listed = await (await fetch(`${base}/api/docs`, asOther())).json();
+	check(
+		!JSON.stringify(listed).includes(A.id),
+		"…and the document does not appear in the other tenant's listing",
+	);
+}
+
 console.log("\nSANDBOX HOST — serves, never writes");
 {
 	// The content host used to record injection warnings on the docs row, which made an
@@ -175,6 +244,38 @@ console.log("\nSANDBOX HOST — serves, never writes");
 	check(
 		JSON.stringify(before.warnings) === JSON.stringify(after.warnings),
 		"…including the warnings, which are computed when content is published",
+	);
+}
+
+console.log("\nREAD DEFAULTS AND THE 304 PATH");
+{
+	// A8: the obvious first call an agent makes must not dump up to 4 MB of HTML into its
+	// own context. The default is exclude; ?content=1 opts in.
+	const plain = await (await fetch(`${base}/api/docs/${A.id}`, asTenant())).json();
+	check(plain.content === undefined, "a document read does NOT include content by default");
+	const withContent = await (await fetch(`${base}/api/docs/${A.id}?content=1`, asTenant())).json();
+	check(typeof withContent.content === "string", "…and ?content=1 opts in");
+
+	// The ETag is a composite of two numbers, and matching used to be a substring test:
+	// W/"21.1" contains "1.1", so a document at version 21 would answer 304 to a client
+	// holding version 1 and that page would run stale content forever.
+	const head = await fetch(`${base}/api/docs/${A.id}`, asTenant());
+	const etag = head.headers.get("etag")!;
+	check(
+		(await status(`/api/docs/${A.id}`, asTenant({ headers: { "if-none-match": etag } }))) === 304,
+		"the current ETag answers 304",
+		etag,
+	);
+	check(
+		(await status(`/api/docs/${A.id}`, asTenant({ headers: { "if-none-match": 'W/"1.1"' } }))) === 200,
+		"a DIFFERENT ETag that is a substring of the current one answers 200, not 304",
+		`current ${etag} vs W/"1.1"`,
+	);
+	// RFC 9110 §13.1.2: `*` is false when the server has a current representation, and a
+	// false precondition on GET is 304. The document exists, so 304 is correct here.
+	check(
+		(await status(`/api/docs/${A.id}`, asTenant({ headers: { "if-none-match": "*" } }))) === 304,
+		"a wildcard If-None-Match follows RFC 9110: 304 when a representation exists",
 	);
 }
 

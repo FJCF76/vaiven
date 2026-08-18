@@ -153,9 +153,14 @@ const writer = new Writer({
 	randomId: () => crypto.randomUUID(),
 	merge: threeWayMerge,
 
-	async put({ state, events, ifMatch }) {
+	async put({ state, events, ifMatch, requestId }) {
 		try {
-			const payload = JSON.stringify({ state, events });
+			// A7: the writer mints this so a timeout that the server actually committed
+			// comes back as a replay instead of a 409, and the recovery path stops
+			// discarding edits that were already saved. It was generated, handed to this
+			// function, and then left out of the body — so the entire server-side dedupe
+			// path was unreachable from the only client there is.
+			const payload = JSON.stringify({ state, events, request_id: requestId });
 			// A1: a normal fetch is cancelled when the page goes away, so an edit made
 			// inside the debounce window and followed by a tab close was simply lost.
 			// keepalive survives unload. It caps at 64 KiB across all in-flight requests,
