@@ -151,6 +151,10 @@ await new Promise((resolve) => setTimeout(resolve, 1500));
 	const page = await browser.newPage();
 	await page.goto(`${config.appOrigin}/d/${docId}#k=${writeKey}`, { waitUntil: "load" });
 	await page.frameLocator("iframe").locator("input[name=fee]").waitFor({ timeout: 10_000 });
+	// Let the page settle into its polling baseline first. Republishing before the first
+	// poll made the shell adopt the NEW content_version as its starting point, so this
+	// whole block used to pass or fail on timing rather than on behaviour.
+	await page.waitForTimeout(5_000);
 
 	await api(`/api/docs/${docId}/content`, {
 		method: "PUT",
@@ -167,6 +171,27 @@ await new Promise((resolve) => setTimeout(resolve, 1500));
 		((await notice.textContent()) ?? "").includes("updated"),
 		"and it is offered, not forced on someone mid-sentence",
 	);
+
+	// Regression: ISSUE-003 — the poll calls announceRemote and then hands the new state
+	// to the writer, which reports "clean" in the same tick, and the clean branch cleared
+	// notices. The offer was created and destroyed microseconds apart. This assertion
+	// passed by accident before: it caught the notice in the window before the wipe.
+	// Found by /qa on 2026-08-18.
+	await page.waitForTimeout(7_000);
+	check(
+		await notice.isVisible(),
+		"…and it is still there after several polls, not wiped by a routine save",
+		(await notice.textContent().catch(() => "(gone)")) ?? "(gone)",
+	);
+
+	// Acting on it swaps the app in and takes the notice away.
+	await page.locator(".notice button").click();
+	await page.waitForTimeout(3_000);
+	check(
+		((await page.frameLocator("iframe").locator("h1").textContent()) ?? "").includes("revised"),
+		"acting on the offer loads the republished app",
+	);
+	check((await notice.count()) === 0, "and clears the notice");
 
 	await page.close();
 }
