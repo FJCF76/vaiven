@@ -82,6 +82,29 @@ then priority. Completed items move to the bottom.
   The no-doctype path, meta-CSP stripping and `<base>` stripping are unguarded, and A14
   exists because a shortcut once put every document into quirks mode.
 
+## Known, from the pre-landing review
+
+- **A replay can return a version that is no longer current.**
+  **Priority:** P2
+  `last_request_version` is only written when a `request_id` is present, so an intervening
+  write without one leaves the slot stale, and a replay then answers with an old version
+  and an ETag naming a representation that no longer exists. Recoverable via the conflict
+  path, and unreachable from the shell; it bites an API client that reuses an id correctly,
+  which is the audience the feature was written for.
+
+- **A 304 hides events appended at an unchanged version.**
+  **Priority:** P2
+  `postEvents` deliberately does not bump the version, and the ETag is built from version
+  plus content_version, so a conditional reader can be told "not modified" while a "Done
+  for now" note is waiting. The shell is unaffected today because every edit event
+  coincides with a version bump, and the guide never tells agents to send `If-None-Match`.
+  It is a correctness gap waiting for the first agent that does.
+
+- **A 64-character `request_id` prefix collision would replay the wrong write.**
+  **Priority:** P3
+  `putState` truncates the id at 64 characters, so two long ids sharing a prefix collide.
+  Unreachable from the shell, which sends a UUID.
+
 ## Product
 
 - **The sender is never named.**
