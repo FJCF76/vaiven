@@ -14,7 +14,7 @@ Every error carries a `hint` saying what to do next. Branch on `code`, never on 
 |---|---|---|---|
 | `unauthorized` | 401 | No key, or the key is not valid | Check `~/.claude/skills/vaiven/config.json`. Ask the user to run `vaiven tenant create` if it is missing. |
 | `revoked` | 401 | The key existed and was revoked | Ask for a new link. Nothing you do with this key will work again. |
-| `read_only` | 403 | A read key tried to write, or a document key tried something tenant-scoped | Not a problem with the key. Key management, deletion, publishing content and `?force=1` need the tenant key. |
+| `read_only` | 403 | A read key tried to write, or a document key tried something tenant-scoped | Not a problem with the key. A document key may read, write `state` and append events; publishing `content`, version history, key management, deletion, the webhook and `?force=1` all need the tenant key. |
 | `disabled` | 403 | The tenant is disabled | Ask the operator. Every key of that tenant is off. |
 | `not_found` | 404 | No such document, key or route | Check the id. Ids look like `d_` plus 26 characters. |
 | `conflict` | 409 | Someone wrote between your read and your write | **Your write was not applied.** The response contains the current `version` and `state`: merge into it and retry. This is routine, not an error to apologise for. |

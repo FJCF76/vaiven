@@ -54,4 +54,4 @@ you never know it is happening — so you cannot be the one to tell them.
 
 Your page has no navigation rights, so anchors are intercepted: the shell shows the
 destination and opens it if the person agrees. Write ordinary `<a href="https://…">` and it
-works. `http:` and other schemes are ignored.
+works; `mailto:` too. `http:` and every other scheme is ignored.
