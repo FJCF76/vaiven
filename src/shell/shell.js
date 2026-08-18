@@ -114,7 +114,6 @@ let doc = null;
 let mode = "read";
 let frameReady = false;
 let loadCount = 0;
-let lastEvents = [];
 
 // ------------------------------------------------------------------- the write path
 
@@ -506,8 +505,8 @@ setInterval(poll, POLL_MS);
 
 /** A10: never yank the frame out from under someone. */
 function offerReload() {
-	const pendingEdits = writer.snapshot().pending;
-	const focused = document.activeElement === frame;
+	// Always a click, never automatic: reloading the frame under someone mid-sentence is
+	// the same violence as a 409 that overwrites what they typed.
 	showNotice(
 		"This document has been updated.",
 		"Reload it",
@@ -518,10 +517,6 @@ function offerReload() {
 		},
 		true,
 	);
-	if (!pendingEdits && !focused) {
-		// Still requires a click. An automatic reload mid-sentence is the same violence
-		// as a 409 that overwrites.
-	}
 }
 
 /** A10: the strongest moment in the product — the person seeing the agent respond. */
@@ -569,7 +564,6 @@ const SANDBOX_ORIGIN = document.documentElement.dataset.sandboxOrigin ?? "";
 
 	doc = await response.json();
 	latestState = doc.state ?? {};
-	lastEvents = doc.events ?? [];
 
 	// The key's own role decides what this view can do. `keys` is tenant-only, so a
 	// document key learns its role from whether writing is permitted at all.
