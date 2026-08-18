@@ -85,8 +85,10 @@ Install the skill and its config in one line:
 
 Then tell the agent: read ~/.claude/skills/vaiven/SKILL.md and config.json.
 
-That first line is also the update: re-run it whenever Vaivén changes. The copy it writes
-carries the version it was taken at, so an agent can tell a stale manual from a current one.
+That one-liner is also the update: re-run the whole block whenever Vaivén changes. It
+rewrites config.json with this same key, which is what you want. The copy it writes names
+the version it was taken at, so a mismatch with the live manual is visible once you look —
+it is a recovery hint, not something that notices staleness on its own.
 `);
 	process.exit(0);
 }

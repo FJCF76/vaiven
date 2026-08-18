@@ -16,7 +16,7 @@ const VERSION = (await Bun.file(join(ROOT, "VERSION")).text().catch(() => "unkno
 export async function serveGuide(config: Config, path: string): Promise<Response> {
 	// `/guide.md` and `/guide/<name>.md`. Nothing else, and no traversal.
 	const name = path === "/guide.md" ? "guide.md" : path.slice("/guide/".length);
-	if (!/^[a-z0-9-]+\.md$/.test(name) && name !== "guide.md") {
+	if (!/^[a-z0-9-]+\.md$/.test(name)) {
 		return new Response("not found\n", { status: 404, headers: baseHeaders() });
 	}
 
@@ -37,7 +37,10 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	// The server knows its own origin, so it fills it in. `$KEY` and `$DOC` are left alone:
 	// those are the caller's to supply, and the distinction is the point — everything the
 	// server can answer is answered, everything it cannot is visibly a blank to fill.
-	let markdown = (await file.text()).replaceAll("$HOST", config.appOrigin);
+	// A FUNCTION, not a string: a string replacement interprets $&, $', $` and $$ inside
+	// itself, so an origin carrying one of those would rewrite or truncate the manual.
+	// Config refuses such a host now; this is the second lock on the same door.
+	let markdown = (await file.text()).replaceAll("$HOST", () => config.appOrigin);
 
 	// The manual is distributed by COPY: `vaiven tenant create` prints an installer that
 	// curls it to ~/.claude/skills/vaiven/SKILL.md, and from then on the agent reads that
@@ -45,11 +48,20 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	// manual corrected today stays wrong forever for everyone who installed it yesterday —
 	// and they cannot tell. Stamped at serve time, so the copy carries the version it was
 	// taken at and the address of the current one.
+	// No date in the body. A per-request date makes the bytes unstable, so the obvious check
+	// — diff my installed copy against a fresh fetch — reports a change every time even when
+	// the manual is identical. The version is the freshness signal; the date was noise in
+	// exactly the comparison this stamp exists to support.
 	const stamp =
-		`\n*Vaivén ${VERSION} · manual fetched ${new Date().toISOString().slice(0, 10)} · ` +
-		`current version always at ${config.appOrigin}${path}* — if you are reading an installed ` +
-		`copy and something here does not match what the API does, re-fetch it.\n`;
-	markdown = markdown.replace(/^(#\s.*\n)/m, `$1${stamp}`);
+		`\n*Vaivén ${VERSION} · current version always at ${config.appOrigin}${path}* — if you are ` +
+		`reading an installed copy and something here does not match what the API does, re-fetch it.\n`;
+	if (/^#\s.*\n/m.test(markdown)) {
+		markdown = markdown.replace(/^(#\s.*\n)/m, (heading) => `${heading}${stamp}`);
+	} else {
+		// No heading to hang it on. Prepending is worse than nothing for a file that is read
+		// as a skill, so put it at the end rather than serve an unstamped copy silently.
+		markdown = `${markdown}\n${stamp}`;
+	}
 
 	return new Response(markdown, {
 		headers: {
