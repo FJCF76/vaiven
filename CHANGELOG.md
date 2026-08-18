@@ -2,6 +2,44 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.5.0] - 2026-08-19
+
+The manual was fixed twice for pointing agents at a CLI they cannot run. The API was still
+doing it, in the one place a cold agent meets first.
+
+### Fixed
+
+- **Six error hints named `vaiven tenant create`**, a binary that has never been published and
+  that only works on the machine serving the instance. The 401 body is what a keyless agent
+  reads *before* it reads any documentation. One followed it, probed six plausible install
+  paths, and correctly gave up — without a tenant key `POST /api/docs` can only answer 401.
+  Every hint now says what is true: document keys arrive in the link, tenant keys are minted
+  only on the server host, **no request you can make will produce one**, and here is who to
+  ask. Closing the search needs that explicit negative; omitting the CLI just invites more
+  searching.
+- **One of them was worse than undocumented.** The revoked-key hint said "mint one with
+  `vaiven key add`" for something `POST /api/docs/<id>/keys` already does over HTTP — and if
+  the revoked key *was* the tenant key, minting was impossible anyway.
+- **Six quota hints told the reader to raise a limit only the operator can raise**, and
+  suggested deleting a document without saying deletion needs a tenant key.
+- **The front-door JSON said nothing about keys at all** — the first object a discovering
+  agent reads. It now states there is no self-service path.
+- **`guide.md` §1 and the sub-pages** carried the same instruction. Corrected.
+
+### Added
+
+- **A trust-model line in the manual: never publish your key into `content`.** The agent
+  authors the HTML, so a key pasted into a page is served to everyone who opens the document.
+
+### Notes
+
+Scope was cut during review, from a full manual restructure to this hygiene fix. The kill
+criterion stands at 0 of 10 — all 50 production documents are test fixtures — and polishing
+onboarding for third-party agents does not move it. Eleven error-shape findings (no
+machine-readable retry semantics, `not_found` covering four cases, 405 returning code
+`invalid`, recovery data outside the `error` object) are recorded in `TODOS.md` rather than
+fixed here. The frozen items and the instance-model decision are recorded too.
+
 ## [0.2.4.0] - 2026-08-18
 
 The guards added in 0.2.3.0 did not cover what they claimed to. Found by running the review

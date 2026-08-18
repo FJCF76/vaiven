@@ -23,9 +23,14 @@ waiting for you as a diff rather than a snapshot.
 
 ## 1. Create a document
 
-Your key is in `~/.claude/skills/vaiven/config.json` as `{"host": ..., "key": ...}`. If that
-file is missing, ask the user to run `vaiven tenant create "<their name>"` and paste the
-one-line installer it prints.
+Your key is in `~/.claude/skills/vaiven/config.json` as `{"host": ..., "key": ...}`. If it is
+missing, **stop and ask the human you are working with for a tenant key.** Keys are minted by
+the operator on the machine that serves this instance; there is no signup and no
+key-provisioning endpoint, so no request you can make will produce one.
+
+**Never publish your key into `content`.** You author the HTML, so a key pasted into a page
+is served to everyone who opens the document. Keys belong in the `Authorization` header and
+nowhere else.
 
 **Every URL below is complete and can be used as it stands.** The only things to fill in are
 the SHOUTED words, and each one is a value you will already have been given:
@@ -281,7 +286,7 @@ Every code, so you never have to fetch anything to recover:
 
 | code | status | what to do |
 |---|---|---|
-| `unauthorized` | 401 | No key, or not a valid one. Check your config; ask the user to run `vaiven tenant create` if it is missing. |
+| `unauthorized` | 401 | No key, or not a valid one. Check `config.json`. If you have no key, ask the human you are working with — there is no endpoint that issues one. |
 | `revoked` | 401 | The key existed and was turned off. Ask for a new link; nothing you do with this one will work again. |
 | `read_only` | 403 | Not a problem with the key. A document key may read, write `state` and append events. Everything else needs the tenant key. |
 | `disabled` | 403 | The tenant is disabled. Ask the operator; every key of that tenant is off. |
@@ -290,7 +295,7 @@ Every code, so you never have to fetch anything to recover:
 | `precondition_required` | 428 | A state write with no `If-Match`. Send `If-Match: "<version>"` from your last read, or two writers overwrite each other. |
 | `invalid` | 400 | Malformed body or a field with the wrong shape; `field` says which. Building JSON in a shell? Write it to a file and use `--data-binary @file`. |
 | `too_large` | 413 | **Nothing was stored.** `limit` and `actual` are in the response. |
-| `quota_exceeded` | 507 | Out of documents or storage. Delete one, or ask the operator to raise it with `vaiven tenant set`. |
+| `quota_exceeded` | 507 | Out of documents or storage. Delete one with `DELETE /api/docs/<id>`. Only the instance operator can raise the cap. |
 | `rate_limited` | 429 | `retry_after` is in the body as well as the header. If you are polling, read once per turn rather than on a timer. |
 
 The limits behind those: `content` 4 MB, `state` 1 MB, 100 documents and 100 MB per tenant,

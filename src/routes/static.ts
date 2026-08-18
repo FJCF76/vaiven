@@ -157,6 +157,11 @@ export function serveIndex(request: Request, config: Config): Response {
 					name: "vaiven",
 					what: "Living documents between an agent and people. An agent publishes a small web app, a person works in it, and the agent reads back a diff of what changed.",
 					guide: `${config.appOrigin}/guide.md`,
+					// A discovering agent reads this object before anything else, and it said
+					// nothing about keys at all. One agent followed the install line, got the
+					// manual, held no key, and went hunting for a binary that has never been
+					// published. State the negative here, where it is met first.
+					keys: "Issued by the operator of this instance. There is no signup and no key-provisioning endpoint, so no request you can make will produce one — ask the human you are working with.",
 					install: `curl --create-dirs -o ~/.claude/skills/vaiven/SKILL.md ${config.appOrigin}/guide.md`,
 				},
 				null,

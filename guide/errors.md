@@ -12,7 +12,7 @@ Every error carries a `hint` saying what to do next. Branch on `code`, never on 
 
 | code | status | what happened | what to do |
 |---|---|---|---|
-| `unauthorized` | 401 | No key, or the key is not valid | Check `~/.claude/skills/vaiven/config.json`. Ask the user to run `vaiven tenant create` if it is missing. |
+| `unauthorized` | 401 | No key, or the key is not valid | Check `~/.claude/skills/vaiven/config.json`. If it is missing, ask the human you are working with for a tenant key — there is no endpoint that issues one. |
 | `revoked` | 401 | The key existed and was revoked | Ask for a new link. Nothing you do with this key will work again. |
 | `read_only` | 403 | A read key tried to write, or a document key tried something tenant-scoped | Not a problem with the key. A document key may read, write `state` and append events; publishing `content`, version history, key management, deletion, the webhook and `?force=1` all need the tenant key. |
 | `disabled` | 403 | The tenant is disabled | Ask the operator. Every key of that tenant is off. |
@@ -21,7 +21,7 @@ Every error carries a `hint` saying what to do next. Branch on `code`, never on 
 | `precondition_required` | 428 | A state write with no `If-Match` | Send `If-Match: "<version>"` from your last read. Without it two writers silently overwrite each other. |
 | `invalid` | 400 | Malformed body, or a field with the wrong shape | The `field` says which one. If you are building JSON in a shell, write it to a file and use `--data-binary @file`. |
 | `too_large` | 413 | One object is over its cap | **Nothing was stored; the document is unchanged.** `limit` and `actual` are in the response. See `limits.md`. |
-| `quota_exceeded` | 507 | The tenant is out of documents or storage | Delete a document, or ask the operator to raise it with `vaiven tenant set`. |
+| `quota_exceeded` | 507 | The tenant is out of documents or storage | Delete a document with `DELETE /api/docs/<id>`. The cap itself can only be raised by the instance operator. |
 | `rate_limited` | 429 | Too many requests this minute | `retry_after` is in the body as well as the header. If you are polling, read once per turn rather than on a timer. |
 
 ## The two that are routine

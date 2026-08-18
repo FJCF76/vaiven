@@ -1,6 +1,6 @@
 {
   "name": "vaiven",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "type": "module",
   "description": "Living documents between an agent and people: publish, edit, read back the diff.",
