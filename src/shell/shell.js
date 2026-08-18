@@ -70,6 +70,11 @@ const skeleton = el("div", "skeleton", "Opening the document…");
 
 const frame = document.createElement("iframe");
 frame.title = "Document";
+// A4's union trap: sandbox restrictions are the UNION of this attribute and the CSP
+// sandbox directive on the response. The flag set has ONE definition, in headers.ts, and
+// travels here through the markup so the two cannot drift. Omitting the attribute would
+// leave the frame confined only by the header — which holds, until something strips it.
+frame.setAttribute("sandbox", document.documentElement.dataset.sandboxFlags ?? "allow-scripts");
 frame.setAttribute("allow", "");
 frame.setAttribute("referrerpolicy", "no-referrer");
 frame.hidden = true;
