@@ -12,8 +12,9 @@ running the review gates over the fixes that feedback produced.
 - **The manual named an API it never defined.** `Vaiven.render` and `mutate` were mentioned
   and documented nowhere, behind a link written as `$HOST/guide/app-mode.md` — a shell
   placeholder nothing could fetch. An agent building against it had to either invent the
-  signatures or stop and ask. Every URL the guide serves is absolute now, and the whole
-  app-mode API is in the manual itself, so it cannot be invented.
+  signatures or stop and ask. Every URL the guide points AT is absolute now — `$KEY`,
+  `$DOC` and `$READ_URL` remain for the caller to fill in, which is the distinction — and
+  the whole app-mode API is in the manual itself, so it cannot be invented.
 - **An installed manual could never be corrected.** The guide is distributed by copy into
   `~/.claude/skills/vaiven/SKILL.md`, and nothing on that copy said which version it was.
   A correction made today stayed wrong forever for anyone who installed yesterday, and
@@ -38,15 +39,38 @@ running the review gates over the fixes that feedback produced.
 ### Added
 
 - A README that documents how to run, test, configure and deploy the service.
-- `test/config.test.ts` and `test/headers.test.ts`: the startup refusals and both CSP
-  policies, the latter against literal strings rather than against the code that produces
-  them.
-- Cross-tenant isolation checks, and coverage of the 304 path and the `?content=1` default.
+- `test/config.test.ts` — the startup refusals, in real subprocesses. `appHost ===
+  sandboxHost` is the invariant the whole security design rests on and nothing had ever
+  executed that branch.
+- `test/guide.test.ts` — the manual's claims, checked against the code that serves them.
 
 ### Changed
 
-- 173 to 212 unit tests. The guide tests now invoke the real handler: the previous ones
+- 169 to 212 unit tests. The guide tests invoke the real handler; the first version of them
   reimplemented its logic, so deleting the code under test left them all passing.
+
+### Compatibility
+
+Two configurations that used to start now refuse to. Both are deliberate, and both are the
+fix rather than a side effect of it:
+
+- `VAIVEN_SCHEME=http` with only one host on `.localhost`.
+- A hostname containing anything outside `[a-z0-9.-]` (or a bracketed IPv6 literal).
+
+If Vaivén stops booting after this upgrade, the startup message says which one and why.
+
+### Known issues
+
+Carried forward, all tracked in `TODOS.md`:
+
+- An event appended without a version bump is invisible to a client sending `If-None-Match`,
+  because the ETag has no event component. Affects any agent using conditional reads.
+- A replay can return a version that is no longer current, if a write without a
+  `request_id` landed in between.
+- A `request_id` longer than 64 characters is truncated, so two ids sharing a prefix
+  collide.
+- No one who has not seen the system has used it yet, and no cold agent has bootstrapped
+  from `guide.md` alone. Those two gates are still open.
 
 ## [0.2.0.0] - 2026-08-18
 
