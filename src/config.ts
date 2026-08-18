@@ -2,6 +2,27 @@
 // anything. A6: the two hosts are the security boundary, so a misconfiguration must be a
 // refusal to start, never a silently collapsed one.
 
+/**
+ * The origin the manual is WRITTEN against, and the one it is rewritten FROM.
+ *
+ * `guide.md` used to store URLs as `$HOST/api/docs`, substituted at serve time. The served
+ * bytes were correct, but the file is not a build input — it is the artifact people meet, on
+ * GitHub, through raw.githubusercontent.com and in every clone, and through all three it told
+ * the reader to call `$HOST/api/docs`. In a shell an unset variable expands to empty, so the
+ * copy-pasted command silently became `curl -s /api/docs`; and `$HOST/guide/errors.md` is not
+ * a URL at all, so an agent's fetch tool could not open it. That happened in production.
+ *
+ * Writing the real origin into the file inverts the failure. The stored manual is correct
+ * standalone, and if this substitution is ever bypassed the reader gets the canonical
+ * instance — which works — rather than a malformed path.
+ *
+ * MUST stay scheme-qualified. Measured: `vaiven.owncompute.com` IS a substring of
+ * `uc.vaiven.owncompute.com`, the sandbox host, so matching on the bare host would corrupt
+ * any mention of the sandbox origin; `https://vaiven.owncompute.com` is not a substring of
+ * `https://uc.vaiven.owncompute.com`. test/guide.test.ts pins that.
+ */
+export const CANONICAL_ORIGIN = "https://vaiven.owncompute.com";
+
 export interface Config {
 	db: string;
 	appHost: string;

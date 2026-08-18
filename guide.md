@@ -27,9 +27,26 @@ Your key is in `~/.claude/skills/vaiven/config.json` as `{"host": ..., "key": ..
 file is missing, ask the user to run `vaiven tenant create "<their name>"` and paste the
 one-line installer it prints.
 
+**Every URL below is complete and can be used as it stands.** The only things to fill in are
+the SHOUTED words, and each one is a value you will already have been given:
+
+| Fill in | Where it comes from |
+|---|---|
+| `YOUR_TENANT_KEY` | `config.json`, or the installer the operator pasted |
+| `d_YOUR_DOCUMENT_ID` | the `id` field of the create response |
+| `YOUR_READ_KEY` | the `read_url` of the create response — use that URL whole, rather than building one |
+| `k_YOUR_KEY_ID` | the `id` of the key you are revoking, from the create or key-mint response |
+
+Responses hand you `view_url`, `read_url`, `content_url` and `api_url` already built. Prefer
+those over assembling a URL yourself.
+
+**Keep the key out of the command line.** Put it in an environment variable and reference
+that, rather than typing the key itself into a command. A shell records what it runs, so a
+key pasted inline survives in history, in scrollback and in any script you save.
+
 ```bash
-curl -s $HOST/api/docs \
-  -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+curl -s https://vaiven.owncompute.com/api/docs \
+  -H "Authorization: Bearer YOUR_TENANT_KEY" -H 'content-type: application/json' \
   -d '{"title":"Harbour Lane fitout",
        "sender_note":"Could you check the fee and the dates?",
        "read_key":true,
@@ -48,8 +65,8 @@ who this is from, and "who sent me this" is the first thing they will want to kn
 JSON-escaping a whole document:
 
 ```bash
-curl -s -X PUT "$HOST/api/docs/$DOC/content" \
-  -H "Authorization: Bearer $KEY" -H 'content-type: text/html' \
+curl -s -X PUT "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/content" \
+  -H "Authorization: Bearer YOUR_TENANT_KEY" -H 'content-type: text/html' \
   --data-binary @app.html
 ```
 
@@ -186,7 +203,7 @@ destination and opens it if the person agrees. Write an ordinary
 ## 3. Read back what changed
 
 ```bash
-curl -s "$READ_URL?since=$LAST"        # no key header, no JS, no SDK
+curl -s "https://vaiven.owncompute.com/r/YOUR_READ_KEY.json?since=128"        # no key header, no JS, no SDK
 ```
 
 ```json
@@ -220,8 +237,8 @@ has opened yet has nothing to say. If you would rather be pushed to, give the do
 webhook:
 
 ```bash
-curl -s -X PUT "$HOST/api/docs/$DOC/webhook" \
-  -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+curl -s -X PUT "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/webhook" \
+  -H "Authorization: Bearer YOUR_TENANT_KEY" -H 'content-type: application/json' \
   -d '{"webhook":"https://your-endpoint.example/hook"}'
 ```
 
@@ -257,7 +274,7 @@ Every error carries a `hint` saying what to do next, and an absolute `guide` URL
 
 ```json
 {"error":{"code":"precondition_required","message":"This write needs If-Match.",
-          "hint":"Send If-Match with the version you read...","guide":"$HOST/guide/errors.md"}}
+          "hint":"Send If-Match with the version you read...","guide":"https://vaiven.owncompute.com/guide/errors.md"}}
 ```
 
 Every code, so you never have to fetch anything to recover:
@@ -285,7 +302,7 @@ single write collapse into one summary event, so a bulk rewrite reads as
 `items: 3 items → 12 items` rather than as forty lines.
 
 There are longer versions of the error, limit and app-mode pages at
-`$HOST/guide/errors.md`, `$HOST/guide/limits.md` and `$HOST/guide/app-mode.md`. You should
+`https://vaiven.owncompute.com/guide/errors.md`, `https://vaiven.owncompute.com/guide/limits.md` and `https://vaiven.owncompute.com/guide/app-mode.md`. You should
 not need them: everything required to build, publish and recover is on this page.
 
 ## Every route

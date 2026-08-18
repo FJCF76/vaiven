@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Config } from "../src/config.ts";
 import { serveGuide } from "../src/routes/static.ts";
+import { CANONICAL_ORIGIN } from "../src/config.ts";
 import { STATUS } from "../src/errors.ts";
 import { CLAMP, COLLAPSE_AT } from "../src/events.ts";
 import { LIMITS, RATES } from "../src/quota.ts";
@@ -58,41 +59,112 @@ describe("the documented app-mode API matches the real one", () => {
 });
 
 describe("the manual never asks an agent to construct a URL (A12)", () => {
-	// It handed out `$HOST/guide/app-mode.md`, a shell placeholder, as the ONLY pointer to
-	// the app-mode API. serveGuide substitutes the real origin now; these assert the two
-	// halves of that contract.
-	test("the file on disk uses the $HOST placeholder", () => {
-		expect(guide).toContain("$HOST/guide/app-mode.md");
+	// It handed out `$HOST/guide/app-mode.md` — a shell placeholder, not a URL. The served
+	// bytes were fine, but the FILE is what people meet: on GitHub, through
+	// raw.githubusercontent.com, in every clone. Through all three it said `curl -s
+	// $HOST/api/docs`, and in a shell an unset variable expands to empty, so that silently
+	// becomes `curl -s /api/docs`. The manual is written against the canonical origin now
+	// and rewritten to whatever this instance serves.
+
+	test("no page on disk contains a shell placeholder", () => {
+		// The regression guard. `$HOST` came back once already; this is what stops it.
+		for (const [path, text] of Object.entries(pageText)) {
+			const found = [...text.matchAll(/\$[A-Z_]{2,}/g)].map((m) => m[0]);
+			expect({ path, found }).toEqual({ path, found: [] });
+		}
+	});
+
+	test("every URL in every page on disk is absolute and parses", () => {
+		let checked = 0;
+		for (const text of Object.values(pageText)) {
+			for (const [url] of text.matchAll(/https?:\/\/[^\s"'`)\]<>]+/g)) {
+				// `<a href="https://…">` is prose showing the SHAPE of a link, not a link.
+				if (url.includes("…")) continue;
+				const trimmed = url.replace(/[.,;]+$/, "");
+				expect(() => new URL(trimmed)).not.toThrow();
+				checked++;
+			}
+		}
+		// A loop over nothing passes vacuously.
+		expect(checked).toBeGreaterThan(10);
+	});
+
+	test("no pointer to another guide page is relative", () => {
+		// The bug that started all of this was a RELATIVE link. `/guide/errors.md` renders
+		// fine and reads fine, and an agent whose fetch tool takes only absolute URLs cannot
+		// open it — which is indistinguishable, from the agent's side, from the page not
+		// existing. Route descriptions like `POST /api/docs` are prose about the API and stay
+		// as they are; a POINTER to a page must carry its origin.
+		for (const [path, text] of Object.entries(pageText)) {
+			const relative = [...text.matchAll(/(^|[^:/\w])(\/guide\/[a-z0-9-]+\.md)/g)].map((m) => m[2]);
+			expect({ path, relative }).toEqual({ path, relative: [] });
+			const relativeLinks = [...text.matchAll(/\]\((\/[^)]*)\)/g)].map((m) => m[1]);
+			expect({ path, relativeLinks }).toEqual({ path, relativeLinks: [] });
+		}
+	});
+
+	test("the file on disk is written against the canonical origin", () => {
+		expect(guide).toContain(`${CANONICAL_ORIGIN}/guide/app-mode.md`);
 	});
 
 	test("every sub-page the guide names exists on disk", async () => {
-		// [a-z0-9-] to match the server's own guard. `[a-z-]` silently skipped any page with
-		// a digit in its name, so the test's claim quietly became false without failing.
-		const pages = [...guide.matchAll(/\$HOST\/guide\/([a-z0-9-]+\.md)/g)].map((m) => m[1]!);
+		const pages = [...guide.matchAll(/https:\/\/[^\s"'`)\]<>]+\/guide\/([a-z0-9-]+\.md)/g)].map((m) => m[1]!);
 		expect(pages.length).toBeGreaterThan(0);
 		for (const page of new Set(pages)) {
 			expect(await Bun.file(new URL(`../guide/${page}`, import.meta.url)).exists()).toBe(true);
 		}
 	});
 
-	test("the SERVED page has no placeholder left in it", async () => {
-		// Through serveGuide, not through a copy of what serveGuide does. The previous
-		// version of this test reimplemented the replacement inline, so deleting the
-		// substitution from the route left every test passing while $HOST shipped raw.
-		const served = await serve("/guide.md");
-		expect(served).not.toContain("$HOST");
-		expect(served).toContain("https://vaiven.example/guide/app-mode.md");
+	test("serving under another origin rewrites every canonical URL away", async () => {
+		// Through serveGuide, not through a copy of what it does. An earlier version of this
+		// test reimplemented the replacement inline, so deleting it from the route left every
+		// test passing while the placeholder shipped raw.
+		for (const path of Object.keys(pageText)) {
+			const served = await serve(path);
+			expect(served).not.toContain(CANONICAL_ORIGIN);
+			expect(served).not.toMatch(/\$[A-Z_]{2,}/);
+		}
+		expect(await serve("/guide.md")).toContain("https://vaiven.example/guide/app-mode.md");
+	});
+
+	test("the sandbox origin survives substitution intact", async () => {
+		// Measured, not assumed: the BARE host `vaiven.owncompute.com` IS a substring of the
+		// sandbox host `uc.vaiven.owncompute.com`, so matching on the bare host would rewrite
+		// the middle of any sandbox URL and produce a host that resolves nowhere. The
+		// scheme-qualified origin is not a substring of the sandbox origin, which is the only
+		// reason this is safe — so pin it, or a later "simplification" reintroduces the bug.
+		expect("uc.vaiven.owncompute.com").toContain("vaiven.owncompute.com");
+		expect(`https://uc.vaiven.owncompute.com`).not.toContain(CANONICAL_ORIGIN);
+
+		const sandboxUrl = "https://uc.vaiven.owncompute.com/c/d_abc";
+		const rewritten = sandboxUrl.replaceAll(CANONICAL_ORIGIN, () => "https://vaiven.example");
+		expect(rewritten).toBe(sandboxUrl);
+	});
+
+	test("no URL in a served page is flush against a markdown emphasis marker", async () => {
+		// A renderer closes `*emphasis*` correctly; an agent extracting URLs with a regex does
+		// not, and takes the `*` with it. The version stamp had exactly this shape, so the one
+		// address whose entire job is to be re-fetchable extracted as a 404.
+		for (const path of Object.keys(pageText)) {
+			const served = await serve(path);
+			// Take the whole non-space run and look at how it ENDS. `_` is a legal URL
+			// character (d_YOUR_DOCUMENT_ID), so only a trailing marker is a problem.
+			const glued = [...served.matchAll(/https?:\/\/\S+/g)]
+				.map((m) => m[0])
+				.filter((url) => /[*~]$/.test(url));
+			expect({ path, glued }).toEqual({ path, glued: [] });
+		}
 	});
 
 	test("every served page carries the version stamp", async () => {
 		for (const path of Object.keys(pageText)) {
-			expect(await serve(path)).toContain(`current version always at https://vaiven.example${path}`);
+			expect(await serve(path)).toContain(`always at https://vaiven.example${path} `);
 		}
 	});
 
 	test("the stamp names the version the copy was taken at", async () => {
 		const version = (await Bun.file(new URL("../VERSION", import.meta.url)).text()).trim();
-		expect(await serve("/guide.md")).toContain(`*Vaivén ${version} ·`);
+		expect(await serve("/guide.md")).toContain(`*Vaivén ${version} —`);
 	});
 
 	test("the served body is byte-stable, so diffing a copy against a fetch is meaningful", async () => {
@@ -107,7 +179,7 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		// The stamp attaches after the first heading. Silently serving an unstamped page is
 		// the exact state it exists to prevent.
 		const served = await serve("/guide/limits.md");
-		expect(served).toContain("current version always at");
+		expect(served).toContain("the current version of this page is always at");
 	});
 
 	test("an unknown page is refused, and never reaches the stamp", async () => {
@@ -136,10 +208,18 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		expect(served.length).toBeLessThan(guide.length * 2);
 	});
 
-	test("$KEY and $DOC are deliberately left for the caller to fill in", async () => {
-		const served = await serve("/guide.md");
-		expect(served).toContain("$KEY");
-		expect(served).toContain("$DOC");
+	test("every blank the examples ask you to fill in is explained in the legend", () => {
+		// The manual now uses literal SHOUTED tokens instead of shell variables, so a reader
+		// cannot infer from syntax that something is a blank. The legend table is what tells
+		// them — so every token used anywhere must appear in it, or the reader meets a
+		// placeholder with no idea where its value comes from.
+		const legend = guide.slice(guide.indexOf("| Fill in |"), guide.indexOf("```bash"));
+		const used = new Set<string>();
+		for (const text of Object.values(pageText)) {
+			for (const [token] of text.matchAll(/\b(?:[dk]_)?YOUR_[A-Z_]+\b/g)) used.add(token);
+		}
+		expect(used.size).toBeGreaterThan(3);
+		for (const token of used) expect(legend).toContain(token);
 	});
 });
 

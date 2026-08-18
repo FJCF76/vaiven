@@ -1,7 +1,7 @@
 // The manual, the shell's assets, and the front door.
 
 import { join } from "node:path";
-import type { Config } from "../config.ts";
+import { CANONICAL_ORIGIN, type Config } from "../config.ts";
 import { baseHeaders } from "../headers.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -28,19 +28,15 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 		});
 	}
 
-	// A12 says never make the agent construct a URL, and the guide was handing out
-	// `$HOST/guide/app-mode.md` — a shell placeholder. Error bodies carry absolute URLs, so
-	// an agent that had hit an error was fine; an agent reading the manual cold had nothing
-	// it could fetch, and the one thing behind that link is the app-mode API. A real agent
-	// hit exactly this and stopped to ask a human rather than invent the signatures.
+	// The manual is written against the canonical origin and rewritten to whichever origin
+	// this instance actually serves, so production is a no-op and local dev and self-hosters
+	// get their own host. See CANONICAL_ORIGIN for why the file stores a real URL rather than
+	// a placeholder, and why the constant must stay scheme-qualified.
 	//
-	// The server knows its own origin, so it fills it in. `$KEY` and `$DOC` are left alone:
-	// those are the caller's to supply, and the distinction is the point — everything the
-	// server can answer is answered, everything it cannot is visibly a blank to fill.
 	// A FUNCTION, not a string: a string replacement interprets $&, $', $` and $$ inside
 	// itself, so an origin carrying one of those would rewrite or truncate the manual.
 	// Config refuses such a host now; this is the second lock on the same door.
-	let markdown = (await file.text()).replaceAll("$HOST", () => config.appOrigin);
+	let markdown = (await file.text()).replaceAll(CANONICAL_ORIGIN, () => config.appOrigin);
 
 	// The manual is distributed by COPY: `vaiven tenant create` prints an installer that
 	// curls it to ~/.claude/skills/vaiven/SKILL.md, and from then on the agent reads that
@@ -52,9 +48,14 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	// — diff my installed copy against a fresh fetch — reports a change every time even when
 	// the manual is identical. The version is the freshness signal; the date was noise in
 	// exactly the comparison this stamp exists to support.
+	// The URL must not sit flush against the closing `*`. A markdown renderer closes the
+	// emphasis correctly, but an agent extracting URLs with a regex takes the `*` with it and
+	// gets a 404 on the one address whose entire job is to be re-fetchable. Keep the URL
+	// mid-sentence, with whitespace after it.
 	const stamp =
-		`\n*Vaivén ${VERSION} · current version always at ${config.appOrigin}${path}* — if you are ` +
-		`reading an installed copy and something here does not match what the API does, re-fetch it.\n`;
+		`\n*Vaivén ${VERSION} — the current version of this page is always at ` +
+		`${config.appOrigin}${path} and re-fetching it is safe. If you are reading an installed ` +
+		`copy and something here does not match what the API does, that copy is stale.*\n`;
 	if (/^#\s.*\n/m.test(markdown)) {
 		markdown = markdown.replace(/^(#\s.*\n)/m, (heading) => `${heading}${stamp}`);
 	} else {

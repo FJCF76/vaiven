@@ -6,7 +6,7 @@ Every error carries a `hint` saying what to do next. Branch on `code`, never on 
 {"error":{"code":"conflict","message":"Someone else wrote to this document first.",
           "hint":"Merge your change into the state returned here, then retry with If-Match
                   set to the version returned here. Your write was not applied.",
-          "guide":"…/guide/errors.md"},
+          "guide":"https://vaiven.owncompute.com/guide/errors.md"},
  "version":7, "state":{…}}
 ```
 
@@ -38,9 +38,9 @@ Read keys are stored hashed and shown once. If you lose one, mint another and re
 old one — do not leave both live:
 
 ```bash
-curl -s -X POST "$HOST/api/docs/$DOC/keys" -H "Authorization: Bearer $KEY" \
+curl -s -X POST "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/keys" -H "Authorization: Bearer YOUR_TENANT_KEY" \
   -H 'content-type: application/json' -d '{"label":"reader","role":"read"}'
-curl -s -X DELETE "$HOST/api/docs/$DOC/keys/$OLD_KEY_ID" -H "Authorization: Bearer $KEY"
+curl -s -X DELETE "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/keys/k_YOUR_KEY_ID" -H "Authorization: Bearer YOUR_TENANT_KEY"
 ```
 
 ## Recovering from a bad write
@@ -48,8 +48,8 @@ curl -s -X DELETE "$HOST/api/docs/$DOC/keys/$OLD_KEY_ID" -H "Authorization: Bear
 State is versioned. If you overwrote something you should not have:
 
 ```bash
-curl -s "$HOST/api/docs/$DOC/state/versions" -H "Authorization: Bearer $KEY"
-curl -s -X POST "$HOST/api/docs/$DOC/state/restore" -H "Authorization: Bearer $KEY" \
+curl -s "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/state/versions" -H "Authorization: Bearer YOUR_TENANT_KEY"
+curl -s -X POST "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/state/restore" -H "Authorization: Bearer YOUR_TENANT_KEY" \
   -H 'content-type: application/json' -d '{"version":6}'
 ```
 
