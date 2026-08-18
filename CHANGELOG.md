@@ -2,6 +2,50 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.4.0] - 2026-08-18
+
+The guards added in 0.2.3.0 did not cover what they claimed to. Found by running the review
+gate that release skipped.
+
+### Fixed
+
+- **A regression guard that could not see new files.** All four guide guards iterated a
+  hardcoded `SUB_PAGES` list of three names, while the server serves any `guide/<name>.md`
+  matching its own pattern. Measured: a new page carrying a shell placeholder, a relative
+  link **and** a URL glued to a markdown emphasis marker was served with HTTP 200 while all
+  38 tests passed. The list is read from disk now, and throws if it comes back empty so it
+  cannot pass vacuously either.
+- **`${HOST}` walked straight past the placeholder guard.** It matched `$[A-Z_]{2,}`, which
+  misses both `${HOST}` and `$Host` — and `${HOST}` is the more idiomatic shell form, so it
+  was the likelier way the original bug returned.
+- **The sandbox origin was never rewritten.** `serveGuide` substituted only the app origin.
+  The moment anyone documented `uc.vaiven.owncompute.com` — the host that serves untrusted
+  model-authored HTML, and a natural thing to explain — a self-hoster's manual would have
+  sent their readers to the canonical production sandbox. No page names it yet; closed before
+  it could bite.
+- **The canonical origin was matched without a boundary.** `…owncompute.com:443/x` would have
+  been rewritten from the middle into a double-port URL.
+- **The sub-page existence guard only scanned `guide.md`**, so a sub-page could link to a
+  page that no longer existed.
+
+### Changed
+
+- **`package.json` was stuck at 0.2.1** and had silently missed both 0.2.2.0 and 0.2.3.0,
+  because those two releases skipped `/ship` and therefore skipped its version gate. Resynced
+  to 0.2.4. The gate found it the first time it ran again.
+
+### Documentation
+
+- **README never explained that the manual is rewritten for your origin.** It documented every
+  environment variable, local development and deploying, but a self-hoster cloning the repo
+  would open `guide.md`, see the canonical origin throughout, and have no way to know their
+  own server substitutes it. New section under Configuration, including the two things that
+  actually trip people: do not edit the origin out of the file, and read the manual from your
+  own server to see what your agents receive.
+- Corrected two stale facts: the unit-test count (212 → 233) and the number of live suites
+  (five → six). Added `test/repaint.ts` and `docs/designs/well-formed-urls.md` to their
+  tables, and softened the `guide/app-mode.md` row now that `guide.md` is self-sufficient.
+
 ## [0.2.3.0] - 2026-08-18
 
 Every URL in the manual is now complete and usable as it stands.

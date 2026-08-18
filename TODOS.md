@@ -127,6 +127,12 @@ then priority. Completed items move to the bottom.
   repaint for a mutation the app itself just made, or expose the focused element so a
   painter can preserve it.
 
+- **A guard that iterates a hardcoded file list stops covering the moment a file is added.**
+  **Priority:** P2
+  Fixed for the guide guards in 0.2.4.0 by reading the directory. Worth a sweep: any other
+  test that enumerates files by name has the same shape, and the failure is silent — the
+  suite goes green while coverage quietly shrinks.
+
 ## Product
 
 - **The sender is never named.**
