@@ -12,3 +12,6 @@ experiments/
 *.sqlite-wal
 *.sqlite-shm
 node_modules/
+
+# Security reports from /cso. Local only: they are a map of where to look.
+.gstack/

@@ -26,7 +26,10 @@ sudo -n rsync -a --delete \
 sudo -n chown -R vaiven:vaiven "$DEST"
 
 sudo -n install -m 0644 "$REPO/deploy/vaiven.service" /etc/systemd/system/vaiven.service
+sudo -n install -m 0644 "$REPO/deploy/vaiven-backup.service" /etc/systemd/system/vaiven-backup.service
+sudo -n install -m 0644 "$REPO/deploy/vaiven-backup.timer" /etc/systemd/system/vaiven-backup.timer
 sudo -n systemctl daemon-reload
+sudo -n systemctl enable --now vaiven-backup.timer
 sudo -n systemctl restart vaiven
 
 sleep 1

@@ -1,0 +1,28 @@
+[Unit]
+Description=Vaiven hot backup, integrity-checked
+After=vaiven.service
+
+[Service]
+Type=oneshot
+User=vaiven
+Group=vaiven
+Environment=VAIVEN_DB=/var/lib/vaiven/db.sqlite
+Environment=VAIVEN_BACKUP_DIR=/var/lib/vaiven/backups
+Environment=VAIVEN_BACKUP_KEEP=14
+ExecStart=/opt/vaiven/deploy/backup.sh
+
+# A backup file holds every key hash and every document's state, so it is the most
+# sensitive object on the box. It gets the same treatment as the database.
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ReadWritePaths=/var/lib/vaiven
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vaiven-backup

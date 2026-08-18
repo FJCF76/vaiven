@@ -50,7 +50,7 @@ describe("isForbiddenAddress", () => {
 	const allowed = [
 		["8.8.8.8", "public"],
 		["1.1.1.1", "public"],
-		["46.62.195.109", "an ordinary public host"],
+		["93.184.216.34", "an ordinary public host"],
 		["172.32.0.1", "just above the private block"],
 		["172.15.255.255", "just below it"],
 		["100.128.0.1", "just above CGNAT"],
