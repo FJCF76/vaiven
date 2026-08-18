@@ -1,14 +1,10 @@
 // The Vaivén helper. Injected into every `content` document, inside the sandbox.
 //
-// Architecture note that corrects §7's wording: the spec says "the shell listens for
-// input and change across the document." It cannot. The content document has an OPAQUE
-// origin, so the shell can neither read its DOM nor attach listeners to it. Everything
-// that observes the document has to live in here and report upward over postMessage.
-// The shell owns the write pipeline (versioning, debounce, conflict merge); the helper
-// owns observation and rendering.
-//
-// Phase 0 scope: handshake, error capture, link interception, read-only enforcement.
-// Phase 4 adds automatic-mode capture, coalescing and the app-mode render/mutate API.
+// Architecture note that corrects §7's wording: the spec says "the shell listens for input
+// and change across the document." It cannot. The content document has an OPAQUE origin,
+// so the shell can neither read its DOM nor attach listeners to it. Everything that
+// observes the document lives here and reports upward over postMessage. The shell owns the
+// write pipeline (versioning, debounce, conflict merge); the helper owns observation.
 
 (() => {
 	"use strict";
@@ -17,8 +13,8 @@
 		try {
 			parent.postMessage(message, "*");
 		} catch {
-			// A frame with no parent (direct navigation to /c/:id) has nowhere to report.
-			// That is a supported way to view content; it simply does nothing.
+			// Direct navigation to /c/:id has no parent. That is a supported way to view
+			// content; it simply records nothing.
 		}
 	};
 
@@ -26,15 +22,15 @@
 	let state = null;
 	let paint = null;
 	let painting = false;
+	let appMode = false;
 
 	// ---------------------------------------------------------------- error capture
-	// A12: the agent publishes JavaScript it cannot execute. Without this, a syntax
-	// error means the human sees a blank page and the agent learns nothing until
-	// somebody complains. Six lines turn /r/ into a debugging channel.
+	// A12: the agent publishes JavaScript it cannot execute. Without this, a syntax error
+	// means the human sees a blank page and the agent learns nothing until somebody
+	// complains. Six lines turn /r/ into a debugging channel.
 
-	const reportError = (kind, detail) => {
+	const reportError = (kind, detail) =>
 		send({ type: "error", kind, detail: String(detail ?? "").slice(0, 400) });
-	};
 
 	addEventListener("error", (event) => {
 		const where = event.filename ? ` (${event.filename}:${event.lineno}:${event.colno})` : "";
@@ -43,17 +39,13 @@
 
 	addEventListener("unhandledrejection", (event) => {
 		const reason = event.reason;
-		reportError(
-			"unhandled_rejection",
-			reason && reason.message ? reason.message : reason,
-		);
+		reportError("unhandled_rejection", reason && reason.message ? reason.message : reason);
 	});
 
 	// ------------------------------------------------------------- link interception
-	// A4: the sandbox denies top-navigation deliberately, so an ordinary <a> would just
-	// do nothing and look broken. Anchors are intercepted and handed to the shell, which
-	// shows the destination and opens it on the viewer's confirmation. Links keep
-	// working; nothing untrusted holds a navigation primitive.
+	// A4: the sandbox denies top-navigation deliberately, so an ordinary <a> would do
+	// nothing and look broken. Anchors are handed to the shell, which shows the
+	// destination and opens it on the viewer's confirmation.
 
 	addEventListener(
 		"click",
@@ -61,7 +53,7 @@
 			if (event.defaultPrevented || event.button !== 0) return;
 			if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
-			const anchor = event.target && event.target.closest && event.target.closest("a[href]");
+			const anchor = event.target?.closest?.("a[href]");
 			if (!anchor) return;
 
 			const href = anchor.getAttribute("href");
@@ -81,26 +73,209 @@
 		true,
 	);
 
-	// ------------------------------------------------------------------ read-only UI
-	// A10: /c/:id needs no auth, so the document renders whether or not the viewer can
-	// write. Without this a read-key holder gets a fully interactive form and every
-	// keystroke is silently discarded.
+	// ---------------------------------------------------------------- automatic mode
+	//
+	// §7's default: the author writes ordinary HTML with `name` attributes and never
+	// learns any of this happened. A10 fills in the cases the spec left to three examples.
 
-	const EDITABLE = "input, textarea, select, button, [contenteditable]";
+	/** A10: these never enter the document. State is readable from a bearer URL, so a
+	 *  password captured "helpfully" is a password published. */
+	const NEVER_CAPTURE = new Set(["password", "file", "hidden"]);
 
-	function applyReadonly() {
-		if (mode === "write") return;
-		for (const element of document.querySelectorAll(EDITABLE)) {
-			if (element.hasAttribute("contenteditable")) {
-				element.setAttribute("contenteditable", "false");
-			} else {
-				element.disabled = true;
+	function capturable(element) {
+		if (element.disabled) return false;
+		if (element.closest("[data-vaiven-ignore]")) return false;
+		if (NEVER_CAPTURE.has(element.type)) return false;
+		const autocomplete = (element.getAttribute("autocomplete") ?? "").toLowerCase();
+		if (autocomplete === "off" || autocomplete.startsWith("cc-") || autocomplete.includes("password")) {
+			return false;
+		}
+		return true;
+	}
+
+	/** A3: a field with no `name` gets a structural path, prefixed so it is visibly
+	 *  distinct from an author-chosen key and can be reported as a warning. */
+	function pathOf(element) {
+		if (element.name) return element.name;
+
+		const parts = [];
+		let node = element;
+		while (node && node !== document.body && parts.length < 8) {
+			const parent = node.parentElement;
+			if (!parent) break;
+			const index = [...parent.children].indexOf(node) + 1;
+			parts.unshift(`${node.tagName.toLowerCase()}:nth-child(${index})`);
+			node = parent;
+		}
+		return `~${parts.join(">")}`;
+	}
+
+	const FIELDS = "input, textarea, select, [contenteditable]";
+
+	/** Read the whole document into a state object. */
+	function readFields() {
+		const next = {};
+
+		for (const element of document.querySelectorAll(FIELDS)) {
+			if (!capturable(element)) continue;
+			const key = pathOf(element);
+
+			if (element.matches("[contenteditable]")) {
+				next[key] = element.innerText;
+				continue;
+			}
+
+			if (element.tagName === "SELECT") {
+				// A10: multi-select is array-valued and had no rule at all.
+				next[key] = element.multiple
+					? [...element.selectedOptions].map((option) => option.value)
+					: element.value;
+				continue;
+			}
+
+			if (element.type === "radio") {
+				// A10: a radio group is many elements sharing one name. Last-write-wins
+				// would simply record the wrong answer.
+				if (element.checked) next[key] = element.value;
+				else if (!(key in next)) next[key] = next[key] ?? "";
+				continue;
+			}
+
+			if (element.type === "checkbox") {
+				// Same name on several boxes means a set; a lone box means a boolean.
+				const group = document.querySelectorAll(`input[type=checkbox][name="${CSS.escape(element.name)}"]`);
+				if (element.name && group.length > 1) {
+					next[key] = [...group].filter((box) => box.checked).map((box) => box.value);
+				} else {
+					next[key] = element.checked;
+				}
+				continue;
+			}
+
+			next[key] = element.value;
+		}
+
+		return next;
+	}
+
+	/** Put values back after a reload or a remote change. */
+	function writeFields(source) {
+		if (!source) return;
+
+		for (const element of document.querySelectorAll(FIELDS)) {
+			if (!capturable(element)) continue;
+			const key = pathOf(element);
+			if (!(key in source)) continue;
+			const value = source[key];
+
+			// A7/A10: never write to the field someone is typing in. This runs on init,
+			// on every poll-applied change and on conflict recovery, in a system that
+			// polls every three seconds — an intermittent caret jump is among the most
+			// expensive bugs to diagnose later.
+			if (element === document.activeElement) continue;
+
+			if (element.matches("[contenteditable]")) {
+				if (element.innerText !== value) element.innerText = String(value ?? "");
+			} else if (element.tagName === "SELECT" && element.multiple) {
+				const wanted = new Set(Array.isArray(value) ? value : []);
+				for (const option of element.options) option.selected = wanted.has(option.value);
+			} else if (element.type === "radio") {
+				element.checked = element.value === value;
+			} else if (element.type === "checkbox") {
+				element.checked = Array.isArray(value) ? value.includes(element.value) : Boolean(value);
+			} else if (element.value !== String(value ?? "")) {
+				element.value = String(value ?? "");
 			}
 		}
 	}
 
-	// Content that adds nodes after load would otherwise escape the sweep.
-	const readonlyObserver = new MutationObserver(() => applyReadonly());
+	function onFieldEvent() {
+		if (appMode || mode !== "write") return;
+		state = readFields();
+		// The shell debounces and derives the diff. The helper only reports the current
+		// truth of the document.
+		send({ type: "mutate", state });
+	}
+
+	// `input` and `change` both, because autofill fires `change` without `input` in some
+	// browsers, and a select fires only `change`.
+	document.addEventListener("input", onFieldEvent, true);
+	document.addEventListener("change", onFieldEvent, true);
+
+	// -------------------------------------------------------------------- read-only
+	// A10: /c/:id needs no auth, so the document renders whether or not the viewer can
+	// write. Without this a read-key holder gets a fully interactive form and every
+	// keystroke is silently discarded.
+
+	// Reversible, and it only ever touches what IT disabled. The mode is not known until
+	// the shell says so, and defaulting to read-only-and-permanent meant a write key
+	// opened a document whose every field was dead.
+	let modeKnown = false;
+
+	function applyReadonly() {
+		if (!modeKnown) return;
+
+		const readonly = mode !== "write";
+		for (const element of document.querySelectorAll(FIELDS + ", button")) {
+			if (readonly) {
+				if (element.hasAttribute("contenteditable")) {
+					if (element.getAttribute("contenteditable") !== "false") {
+						element.dataset.vaivenWasEditable = "1";
+						element.setAttribute("contenteditable", "false");
+					}
+				} else if (!element.disabled) {
+					element.dataset.vaivenDisabled = "1";
+					element.disabled = true;
+				}
+			} else {
+				// Restore only what we disabled: a field the author disabled on purpose
+				// stays that way.
+				if (element.dataset.vaivenWasEditable) {
+					element.setAttribute("contenteditable", "true");
+					delete element.dataset.vaivenWasEditable;
+				}
+				if (element.dataset.vaivenDisabled) {
+					element.disabled = false;
+					delete element.dataset.vaivenDisabled;
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------ height report
+
+	let lastHeight = 0;
+	function reportHeight() {
+		const height = Math.ceil(document.documentElement.scrollHeight);
+		if (height !== lastHeight && height > 0) {
+			lastHeight = height;
+			send({ type: "resize", height });
+		}
+	}
+
+	// ------------------------------------------------------- structural change notice
+
+	let warnedDynamic = false;
+	const observer = new MutationObserver((records) => {
+		applyReadonly();
+		reportHeight();
+
+		if (appMode || warnedDynamic) return;
+		// A3/§7: automatic mode cannot restore elements the app created, so the author
+		// should have used app mode. The signal is that nodes appeared after load.
+		const added = records.some((record) =>
+			[...record.addedNodes].some((node) => node.nodeType === 1 && node.querySelector?.(FIELDS)),
+		);
+		if (added) {
+			warnedDynamic = true;
+			send({
+				type: "error",
+				kind: "dynamic_fields",
+				detail:
+					"Fields were added after load while in automatic mode. Automatic mode restores values but not structure, so those rows will be missing on reload. Call Vaiven.render() to take over.",
+			});
+		}
+	});
 
 	// ----------------------------------------------------------------- public surface
 
@@ -113,14 +288,16 @@
 		},
 
 		render(fn) {
+			// Calling render is the opt-out: from here the app owns the DOM and automatic
+			// capture stops, because the two would fight over the same document.
+			appMode = true;
 			paint = () => {
-				// A7: `mutate` inside `render` is the natural next thing an author writes
-				// and produces a write every debounce interval, forever.
 				painting = true;
 				try {
 					fn(state);
 				} finally {
 					painting = false;
+					reportHeight();
 				}
 			};
 			if (state !== null) paint();
@@ -129,9 +306,11 @@
 		mutate(fn) {
 			if (mode !== "write") return;
 			if (painting) {
+				// A7: mutate inside render is the natural next thing an author writes, and
+				// it writes every debounce interval forever. The shell has a circuit
+				// breaker too; this is the polite first line.
 				console.warn(
-					"[vaiven] Vaiven.mutate() was called from inside Vaiven.render(). Ignored — " +
-						"it would loop forever. Move the mutation into an event handler.",
+					"[vaiven] Vaiven.mutate() was called from inside Vaiven.render(). Ignored — it would loop forever. Move the mutation into an event handler.",
 				);
 				return;
 			}
@@ -155,16 +334,26 @@
 		if (!message || typeof message !== "object") return;
 
 		if (message.type === "init" || message.type === "state") {
-			if (typeof message.mode === "string") mode = message.mode;
+			if (typeof message.mode === "string") {
+				mode = message.mode;
+				modeKnown = true;
+			}
 			state = message.state ?? {};
 			applyReadonly();
-			if (paint) paint();
+			if (appMode) {
+				if (paint) paint();
+			} else {
+				writeFields(state);
+			}
+			reportHeight();
 		}
 	});
 
 	const announceReady = () => {
 		applyReadonly();
-		readonlyObserver.observe(document.documentElement, { childList: true, subtree: true });
+		observer.observe(document.documentElement, { childList: true, subtree: true });
+		addEventListener("resize", reportHeight);
+		reportHeight();
 		send({ type: "ready" });
 	};
 

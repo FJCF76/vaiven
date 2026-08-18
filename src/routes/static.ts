@@ -35,27 +35,49 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	});
 }
 
-const TYPES: Record<string, string> = {
-	".js": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-};
+/** The shell imports the write pipeline, which is TypeScript shared with the server's
+ *  tests. Bundling on first request keeps one copy of that logic instead of two that drift,
+ *  and avoids a build step between editing and running. */
+let bundled: string | null = null;
 
-export async function serveStatic(path: string): Promise<Response> {
-	const name = path.slice(1);
-	if (!/^[a-z0-9.-]+$/.test(name)) {
-		return new Response("not found\n", { status: 404, headers: baseHeaders() });
+async function shellBundle(): Promise<string> {
+	if (bundled !== null) return bundled;
+
+	const built = await Bun.build({
+		entrypoints: [join(ROOT, "src", "shell", "shell.js")],
+		target: "browser",
+		format: "esm",
+		minify: false,
+	});
+
+	if (!built.success) {
+		const reasons = built.logs.map((log) => String(log)).join("\n");
+		throw new Error(`shell bundle failed:\n${reasons}`);
 	}
 
-	const file = Bun.file(join(ROOT, "src", "shell", name));
+	bundled = await built.outputs[0]!.text();
+	return bundled;
+}
+
+export async function serveStatic(path: string): Promise<Response> {
+	if (path === "/shell.js") {
+		return new Response(await shellBundle(), {
+			headers: {
+				...baseHeaders(),
+				"content-type": "text/javascript; charset=utf-8",
+				"cache-control": "public, max-age=60",
+			},
+		});
+	}
+
+	const file = Bun.file(join(ROOT, "src", "shell", "shell.css"));
 	if (!(await file.exists())) {
 		return new Response("not found\n", { status: 404, headers: baseHeaders() });
 	}
-
-	const extension = name.slice(name.lastIndexOf("."));
 	return new Response(await file.text(), {
 		headers: {
 			...baseHeaders(),
-			"content-type": TYPES[extension] ?? "application/octet-stream",
+			"content-type": "text/css; charset=utf-8",
 			"cache-control": "public, max-age=60",
 		},
 	});
