@@ -1,0 +1,34 @@
+# Both hostnames terminate here and proxy to the one process, which dispatches on Host.
+# Caddy must NOT route by host itself: the partition is a security boundary and lives in
+# one place, in src/index.ts, where it is gate-tested.
+
+{
+	# Nothing else should be able to reach the upstream; it binds loopback.
+	admin off
+}
+
+vaiven.owncompute.com, uc.vaiven.owncompute.com {
+	# A13: every path on this service carries bearer material somewhere —
+	# /r/<read_key>.json puts a secret in the path, and Caddy logs paths by default,
+	# in plaintext, to disk, and into anything that ships those logs. §3 goes to the
+	# trouble of keeping the /d/ key out of server logs via the URL fragment; logging
+	# /r/ would hand the equivalent secret straight back.
+	log {
+		output discard
+	}
+
+	# A13: cap the body at the edge. Without this a 100 MB upload is buffered before
+	# the application ever computes a 413.
+	request_body {
+		max_size 8MB
+	}
+
+	# Host is preserved by default, which is what the dispatcher reads.
+	reverse_proxy 127.0.0.1:8080
+
+	header {
+		# Belt and braces with the application's own headers.
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+	}
+}
