@@ -25,7 +25,18 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 		});
 	}
 
-	return new Response(await file.text(), {
+	// A12 says never make the agent construct a URL, and the guide was handing out
+	// `$HOST/guide/app-mode.md` — a shell placeholder. Error bodies carry absolute URLs, so
+	// an agent that had hit an error was fine; an agent reading the manual cold had nothing
+	// it could fetch, and the one thing behind that link is the app-mode API. A real agent
+	// hit exactly this and stopped to ask a human rather than invent the signatures.
+	//
+	// The server knows its own origin, so it fills it in. `$KEY` and `$DOC` are left alone:
+	// those are the caller's to supply, and the distinction is the point — everything the
+	// server can answer is answered, everything it cannot is visibly a blank to fill.
+	const markdown = (await file.text()).replaceAll("$HOST", config.appOrigin);
+
+	return new Response(markdown, {
 		headers: {
 			...baseHeaders(),
 			"content-type": "text/markdown; charset=utf-8",
