@@ -60,12 +60,19 @@ const recordedButton = el("button", "link", "What's recorded");
 const doneButton = el("button", "primary", "Done for now");
 doneButton.disabled = true;
 
+// Every save-state transition and every warning, including "don't close this tab", was
+// announced to nobody.
+statusEl.setAttribute("role", "status");
+statusEl.setAttribute("aria-live", "polite");
+
 bar.append(identity, statusEl, recordedButton, doneButton);
 
 const disclosure = el("div", "disclosure");
+disclosure.hidden = true;
 const senderEl = el("div", "sender");
 senderEl.hidden = true;
-const noticeSlot = el("div");
+const noticeSlot = el("div", "notices");
+noticeSlot.setAttribute("aria-live", "assertive");
 const skeleton = el("div", "skeleton", "Opening the document…");
 
 const frame = document.createElement("iframe");
@@ -86,8 +93,19 @@ function setStatus(text, kind) {
 	statusEl.dataset.kind = kind;
 }
 
-function showNotice(text, actionLabel, onAction, accent) {
+/**
+ * One slot, eight meanings, and whoever spoke last won. A "your changes aren't saving,
+ * don't close this tab" warning was silently destroyed by "Claude updated status" on the
+ * next three-second poll, and a successful background save wiped the "this document wants
+ * to open <url>" confirmation out from under someone mid-decision.
+ *
+ * `sticky` marks the notices that must survive until they are answered or resolved: the
+ * ones about losing work, and the ones asking a security question.
+ */
+function showNotice(text, actionLabel, onAction, accent, sticky) {
+	if (noticeSlot.dataset.sticky === "1" && !sticky) return null;
 	noticeSlot.replaceChildren();
+	noticeSlot.dataset.sticky = sticky ? "1" : "";
 	const notice = el("div", accent ? "notice accent" : "notice");
 	notice.append(el("span", "grow", text));
 	if (actionLabel) {
@@ -99,7 +117,11 @@ function showNotice(text, actionLabel, onAction, accent) {
 	return notice;
 }
 
-const clearNotice = () => noticeSlot.replaceChildren();
+const clearNotice = (force) => {
+	if (noticeSlot.dataset.sticky === "1" && !force) return;
+	noticeSlot.dataset.sticky = "";
+	noticeSlot.replaceChildren();
+};
 
 // --------------------------------------------------------------------- API plumbing
 
@@ -184,15 +206,17 @@ const writer = new Writer({
 						"Your changes aren't saving. Don't close this tab.",
 						"Copy my changes",
 						copyPending,
+						false,
+						true,
 					);
 				}
 				break;
 			case "blocked":
 				setStatus("Not saved", "blocked");
-				showNotice(status.reason, "Copy my changes", copyPending);
+				showNotice(status.reason, "Copy my changes", copyPending, false, true);
 				break;
 			case "readonly":
-				setStatus("Read-only", "clean");
+				setStatus("Read-only", "readonly");
 				break;
 		}
 	},
@@ -205,6 +229,21 @@ const writer = new Writer({
 
 const timeOf = (ms) =>
 	new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+/** The bar said "7:27 AM" and the panel said "8/18/2026, 7:27:17 AM" for the same instant,
+ *  and the long one sat in the narrowest column in the product. Same clock, and the date
+ *  only when it is not today. */
+const whenOf = (iso) => {
+	const at = new Date(iso);
+	const today = new Date();
+	const sameDay =
+		at.getFullYear() === today.getFullYear() &&
+		at.getMonth() === today.getMonth() &&
+		at.getDate() === today.getDate();
+	return sameDay
+		? timeOf(at.getTime())
+		: `${at.toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeOf(at.getTime())}`;
+};
 
 /** The last thing standing between a failed save and someone losing an afternoon. */
 async function copyPending() {
@@ -242,6 +281,8 @@ frame.addEventListener("load", () => {
 			"This document tried to navigate somewhere else, so it has been closed. Nothing was sent to it.",
 			null,
 			null,
+			false,
+			true,
 		);
 		return;
 	}
@@ -360,29 +401,46 @@ function confirmOpen(raw) {
 	// and open https://example.com/?s=<their answers>. With connect-src 'none' and popups
 	// denied, this is the last egress path, so it has to be legible.
 	const where = url.href.length > 120 ? `${url.href.slice(0, 119)}…` : url.href;
-	showNotice(`This document wants to open ${where}`, "Open in a new tab", () => {
-		window.open(url.href, "_blank", "noopener,noreferrer");
-		clearNotice();
-	});
+	// Sticky: this asks a security question, and a background save completing must not
+	// answer it by making it disappear.
+	showNotice(
+		`This document wants to open ${where}`,
+		"Open in a new tab",
+		() => {
+			window.open(url.href, "_blank", "noopener,noreferrer");
+			clearNotice(true);
+		},
+		false,
+		true,
+	);
 }
 
 // --------------------------------------------------------------------------- render
 
 function renderChrome() {
 	titleEl.textContent = doc.title || "Untitled document";
-	document.title = doc.title || "Vaiven document";
+	document.title = doc.title || "Vaivén document";
 
 	const label = doc.actor_label ?? "you";
 	whoEl.textContent = mode === "write" ? `editing as ${label}` : `read-only · ${label}`;
+	// Both of these truncate with an ellipsis in a narrow bar.
+	whoEl.title = whoEl.textContent;
+	titleEl.title = titleEl.textContent;
 
 	// A10: persistent, not dismissible, and outside the frame so content cannot suppress
 	// it. In automatic mode the author never knows this is happening, which makes the
 	// shell the only thing that can say so.
+	// Read-only viewers were told their edits are recorded. They cannot edit, and nothing
+	// they do is recorded — so the one sentence whose entire job is to be accurate about
+	// recording was inaccurate for everyone holding a read link.
+	disclosure.hidden = false;
 	disclosure.replaceChildren(
 		el(
 			"span",
 			null,
-			`Edits here are recorded as “${label}” and shared with whoever sent you this link.`,
+			mode === "write"
+				? `Edits here are recorded as “${label}” and shared with whoever sent you this link. Vaivén.`
+				: `You can read this document but not change it. Nothing you do here is recorded. Vaivén.`,
 		),
 	);
 
@@ -435,7 +493,7 @@ function renderRecord(events) {
 
 	for (const event of events) {
 		const row = el("div", "event");
-		row.append(el("div", "when", new Date(event.at).toLocaleString()));
+		row.append(el("div", "when", whenOf(event.at)));
 
 		const what = el("div", "what");
 		what.append(el("span", "field", event.field ?? event.kind), document.createTextNode(" "));
@@ -444,11 +502,20 @@ function renderRecord(events) {
 		} else if (event.from !== undefined || event.to !== undefined) {
 			what.append(el("span", "from", event.from || "(empty)"));
 			what.append(document.createTextNode(" → "));
-			what.append(document.createTextNode(event.to || "(empty)"));
+			what.append(el("span", "to", event.to || "(empty)"));
 		} else if (event.note) {
 			what.append(document.createTextNode(event.note));
 		}
-		what.append(el("div", "when", `by ${event.actor}`));
+
+		// The panel says "everything this document has recorded" and then dropped this on
+		// the floor. `Vaiven.log("submitted", {email: "..."})` stores a payload, returns it
+		// from the API, and showed the person nothing. Overclaiming is bad anywhere; inside
+		// the transparency panel it is the worst place to do it.
+		if (event.payload) {
+			what.append(el("div", "payload", String(event.payload)));
+		}
+
+		what.append(el("div", "by", `by ${event.actor}`));
 		row.append(what);
 		panelBody.append(row);
 	}
