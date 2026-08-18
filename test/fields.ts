@@ -59,7 +59,11 @@ const frame = page.frameLocator("iframe");
 await frame.locator("input[name=plain]").waitFor({ timeout: 15_000 });
 
 // Touch one control of every shape.
-await frame.locator("input[name=plain]").fill("changed");
+// type(), not fill(): fill() sets a value in one shot and never exercises the
+// keystroke-by-keystroke path. This fixture is automatic mode, which does not repaint, so
+// the app-mode repaint hazard is NOT covered here — test/repaint.ts covers that.
+await frame.locator("input[name=plain]").fill("");
+await frame.locator("input[name=plain]").type("changed", { delay: 30 });
 await frame.locator("textarea[name=notes]").fill("first line\nsecond line");
 await frame.locator('input[name=size][value="l"]').check();
 await frame.locator('input[name=extras][value="salad"]').check();

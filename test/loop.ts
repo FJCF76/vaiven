@@ -58,6 +58,14 @@ const created = await (
 	})
 ).json();
 
+if (!created.id) {
+	// A quota-exhausted tenant used to surface here as a failure of the loop itself. Say
+	// what the server said instead of asserting on undefined.
+	console.error(`Could not create the document: ${created.code ?? "?"} — ${created.message ?? ""}`);
+	console.error(created.hint ?? "");
+	process.exit(2);
+}
+
 const docId: string = created.id;
 const writeKey: string = created.keys.find((k: any) => k.role === "write").key;
 const readKey: string = created.keys.find((k: any) => k.role === "read").key;

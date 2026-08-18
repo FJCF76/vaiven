@@ -10,6 +10,9 @@ import { describe, expect, test } from "bun:test";
 
 import type { Config } from "../src/config.ts";
 import { serveGuide } from "../src/routes/static.ts";
+import { STATUS } from "../src/errors.ts";
+import { CLAMP, COLLAPSE_AT } from "../src/events.ts";
+import { LIMITS, RATES } from "../src/quota.ts";
 
 const guide = await Bun.file(new URL("../guide.md", import.meta.url)).text();
 const helper = await Bun.file(new URL("../src/shell/helper.js", import.meta.url)).text();
@@ -137,5 +140,63 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		const served = await serve("/guide.md");
 		expect(served).toContain("$KEY");
 		expect(served).toContain("$DOC");
+	});
+});
+
+// ---------------------------------------------------------------------------------------
+
+describe("the inlined tables cannot drift from the code", () => {
+	// guide.md now carries the error table and the limits inline, because the whole point of
+	// the page is that one fetch is enough. That duplicates src/errors.ts and src/quota.ts,
+	// and duplication nothing checks goes stale — a wrong status here sends an agent down the
+	// wrong recovery path with no error to tell it so. These tests are the pin.
+	const rows = new Map<string, number>();
+	for (const [, code, status] of guide.matchAll(/^\| `(\w+)` \| (\d{3}) \|/gm)) {
+		rows.set(code!, Number(status));
+	}
+
+	test("the table has a row for every code the server can actually throw", async () => {
+		const thrown = new Set(Object.keys(STATUS));
+		// `upstream_error` is declared but never thrown, so the manual is right to omit it.
+		// Asserted rather than assumed, because the day it IS thrown the table must grow.
+		thrown.delete("upstream_error");
+		expect(new Set(rows.keys())).toEqual(thrown);
+	});
+
+	test("upstream_error really is unreachable, which is why it is omitted", async () => {
+		const glob = new Bun.Glob("**/*.ts");
+		let thrownAnywhere = false;
+		for await (const file of glob.scan({ cwd: new URL("../src", import.meta.url).pathname })) {
+			const text = await Bun.file(new URL(`../src/${file}`, import.meta.url)).text();
+			if (/fail\(\s*"upstream_error"/.test(text)) thrownAnywhere = true;
+		}
+		expect(thrownAnywhere).toBe(false);
+	});
+
+	for (const [code, status] of Object.entries(STATUS)) {
+		if (code === "upstream_error") continue;
+		test(`guide.md gives ${code} the status the server sends`, () => {
+			expect(rows.get(code)).toBe(status);
+		});
+	}
+
+	test("every size and rate in the manual is the number the server enforces", () => {
+		// Collapsed to single spaces: the manual is wrapped prose, so a limit can legitimately
+		// straddle a line break and still be the same sentence.
+		const limits = guide
+			.slice(guide.indexOf("The limits behind those:"))
+			.replace(/\s+/g, " ");
+		expect(limits).toContain(`\`content\` ${LIMITS.contentBytes / 1024 / 1024} MB`);
+		expect(limits).toContain(`\`state\` ${LIMITS.stateBytes / 1024 / 1024} MB`);
+		expect(limits).toContain(`${RATES.write} writes a minute`);
+		expect(limits).toContain(`${RATES.publicRead} reads of a read URL`);
+		expect(limits).toContain(`${RATES.apiRead} API reads`);
+		expect(limits).toContain(`${LIMITS.eventsPerWrite} events per write`);
+		expect(limits).toContain(`truncated at ${CLAMP} characters`);
+		expect(limits).toContain(`labels at 40`);
+		expect(limits).toContain(`\`title\` is capped at ${LIMITS.titleChars} characters`);
+		expect(limits).toContain(`\`sender_note\` at ${LIMITS.senderNoteChars}`);
+		expect(limits).toContain(`key label at ${LIMITS.labelChars}`);
+		expect(limits).toContain(`More than ${COLLAPSE_AT} changes`);
 	});
 });

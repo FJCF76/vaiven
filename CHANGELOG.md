@@ -2,6 +2,51 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.2.2.0] - 2026-08-18
+
+One URL is now enough. An agent handed only `https://vaiven.owncompute.com` can reach the
+manual, and the manual alone carries everything needed to build, publish and recover.
+
+### Fixed
+
+- **The worked example in the manual did not work.** It is the copy-paste starting point
+  for every app-mode document, so its defects propagate into every app built from it, and
+  it had two. Typing into a row dropped everything after the first character and lost
+  focus, because `render` re-runs synchronously inside `mutate` and the painter rebuilt the
+  input being typed into. Mutating on `change` instead moved the bug rather than fixing it:
+  the *next* click was swallowed, since moving focus fires `change`, which repaints and
+  re-inserts the button before the click lands on it. Re-using the node is not sufficient
+  either — re-inserting a node cancels a click in flight over it. The example now keys rows
+  by an id of its own, updates values in place, skips the field holding focus, and rewrites
+  the list only when rows are added, removed or reordered.
+- **The same example in `guide/app-mode.md` referenced an undefined `row`** — a
+  `ReferenceError` for anyone who copied it. Both pages now carry the same working example.
+- **Three facts needed to recover from a mistake lived only in sub-pages**, so the page
+  claiming to be sufficient was not: the body shape for minting a key (`role` is required),
+  the body shape for restoring a version, and the character caps on `title`, `sender_note`
+  and key labels — which refuse the write with 413 rather than shortening it.
+- **The manual overstated `untrusted`.** Error bodies do not carry it; successful reads do.
+- Documented two behaviours that fail silently when guessed: calling `Vaiven.render` turns
+  automatic capture off, and `Vaiven.log(kind, …)` records `kind` as the note *text* while
+  the event itself reads back as kind `note`.
+
+### Added
+
+- **`test/repaint.ts`** — reads the worked example out of `guide.md`, publishes it, and
+  drives it in Chromium the way a person does: one keystroke at a time, clicking without
+  blurring first. Verified against both shipped-broken versions of the example, which it
+  fails, and the fix, which it passes. `test/fields.ts` could not have caught either bug —
+  it is an automatic-mode fixture, which never repaints, and it drove inputs with `fill()`,
+  which sets a value once. Its comment said otherwise; that comment is corrected.
+- **The manual's inlined error table and limits are now pinned to the code.** Statuses are
+  asserted against `STATUS`, and every size, rate and cap against `LIMITS`, `RATES`,
+  `CLAMP` and `COLLAPSE_AT`, so the duplication cannot drift in either direction.
+
+### Changed
+
+- `test/loop.ts` reports what the server said when a document cannot be created. A
+  quota-exhausted tenant used to surface as a failure of the loop itself.
+
 ## [0.2.1.0] - 2026-08-18
 
 Everything here came from one agent using Vaivén for real and reporting back, and from

@@ -174,7 +174,7 @@ function labelOf(element: unknown, fallback: string): string {
 // -------------------------------------------------------------------------- the differ
 
 /** Above this many element-level events for one array, emit a single summary instead. */
-const COLLAPSE_AT = 10;
+export const COLLAPSE_AT = 10;
 
 function scalarString(value: unknown): string {
 	if (value === null || value === undefined) return "";
