@@ -301,6 +301,13 @@ export async function putContent(
 		).run(content, bytes, id);
 		if (stateChanged) {
 			db.query("UPDATE docs SET state = ?, state_bytes = ? WHERE id = ?").run(seededText, seededBytes, id);
+			// The seed changes state_bytes, and used_bytes counts content PLUS state. Without
+			// this the tenant's accounting drifts a little on every republish that introduces
+			// a field, and quota enforcement drifts with it.
+			db.query("UPDATE tenants SET used_bytes = max(0, used_bytes + ?) WHERE id = ?").run(
+				seededBytes - doc.state_bytes,
+				doc.tenant_id,
+			);
 		}
 		db.query("UPDATE docs SET updated_at = ? WHERE id = ?").run(now, id);
 		db.query("UPDATE tenants SET used_bytes = max(0, used_bytes + ?) WHERE id = ?").run(
@@ -487,6 +494,24 @@ export async function restoreVersion(
 			id,
 		);
 		const next = db.query<{ version: number }, [string]>("SELECT version FROM docs WHERE id = ?").get(id)!.version;
+
+		// Snapshot what we just replaced. Restoring is itself a destructive write, and
+		// without this, restoring to an old version destroys the current one with no way
+		// back -- a hole in the safety net, in the one operation it exists for.
+		const latest = db
+			.query<{ ts: number; session: number }, [string]>(
+				"SELECT ts, session FROM state_versions WHERE doc_id = ? ORDER BY version DESC LIMIT 1",
+			)
+			.get(id);
+		const session = !latest || now - latest.ts > SESSION_GAP_MS ? now : latest.session;
+		db.query(
+			"INSERT OR REPLACE INTO state_versions (doc_id, version, state, bytes, actor, ts, session) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		).run(id, next, doc.state, doc.state_bytes, scope.actor, now, session);
+		db.query("UPDATE docs SET versions_bytes = versions_bytes + ? WHERE id = ?").run(doc.state_bytes, id);
+		db.query("UPDATE tenants SET versions_bytes = versions_bytes + ? WHERE id = ?").run(
+			doc.state_bytes,
+			doc.tenant_id,
+		);
 		db.query(
 			"INSERT INTO events (doc_id, version, actor, kind, note, ts) VALUES (?, ?, ?, 'note', ?, ?)",
 		).run(id, next, scope.actor, `restored the state from version ${target}`, now);

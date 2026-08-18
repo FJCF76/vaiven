@@ -17,9 +17,16 @@ const helper = await Bun.file(new URL("../shell/helper.js", import.meta.url)).te
 /** A3: warnings are computed once, at serve time, and stored on the document so the agent
  *  sees them on its next read without anything re-parsing a megabyte of HTML. */
 function recordWarnings(db: Database | null, id: string, warnings: unknown[]): void {
-	if (!db || warnings.length === 0) return;
+	if (!db) return;
+	const encoded = JSON.stringify(warnings);
 	try {
-		db.query("UPDATE docs SET warnings = ? WHERE id = ?").run(JSON.stringify(warnings), id);
+		// Only when it actually changed. Writing unconditionally turned every page load of
+		// a document that legitimately carries a warning into a database write.
+		const current = db
+			.query<{ warnings: string }, [string]>("SELECT warnings FROM docs WHERE id = ?")
+			.get(id);
+		if (!current || current.warnings === encoded) return;
+		db.query("UPDATE docs SET warnings = ? WHERE id = ?").run(encoded, id);
 	} catch {
 		// Advisory only; never fail a page render over a note about it.
 	}
