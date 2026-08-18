@@ -6,6 +6,9 @@ import { baseHeaders } from "../headers.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 
+/** The running version, for the freshness stamp below. */
+const VERSION = (await Bun.file(join(ROOT, "VERSION")).text().catch(() => "unknown")).trim();
+
 /**
  * A12: served as `text/markdown` so a fetching agent renders it rather than downloading
  * it, and so the file reads the same over HTTP as it does installed as a skill.
@@ -34,7 +37,19 @@ export async function serveGuide(config: Config, path: string): Promise<Response
 	// The server knows its own origin, so it fills it in. `$KEY` and `$DOC` are left alone:
 	// those are the caller's to supply, and the distinction is the point — everything the
 	// server can answer is answered, everything it cannot is visibly a blank to fill.
-	const markdown = (await file.text()).replaceAll("$HOST", config.appOrigin);
+	let markdown = (await file.text()).replaceAll("$HOST", config.appOrigin);
+
+	// The manual is distributed by COPY: `vaiven tenant create` prints an installer that
+	// curls it to ~/.claude/skills/vaiven/SKILL.md, and from then on the agent reads that
+	// snapshot. Nothing in it said which version it was or that it could go stale, so a
+	// manual corrected today stays wrong forever for everyone who installed it yesterday —
+	// and they cannot tell. Stamped at serve time, so the copy carries the version it was
+	// taken at and the address of the current one.
+	const stamp =
+		`\n*Vaivén ${VERSION} · manual fetched ${new Date().toISOString().slice(0, 10)} · ` +
+		`current version always at ${config.appOrigin}${path}* — if you are reading an installed ` +
+		`copy and something here does not match what the API does, re-fetch it.\n`;
+	markdown = markdown.replace(/^(#\s.*\n)/m, `$1${stamp}`);
 
 	return new Response(markdown, {
 		headers: {

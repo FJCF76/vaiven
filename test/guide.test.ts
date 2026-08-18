@@ -59,6 +59,13 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		expect(served).toContain("https://vaiven.example/guide/app-mode.md");
 	});
 
+	test("there is a heading for the freshness stamp to attach to", () => {
+		// serveGuide injects the version stamp after the first markdown heading. The manual
+		// travels as a COPY into ~/.claude/skills/vaiven/SKILL.md, so without a version on
+		// it a correction made today never reaches anyone who installed yesterday.
+		expect(guide).toMatch(/^#\s.+$/m);
+	});
+
 	test("$KEY and $DOC are deliberately left for the caller to fill in", () => {
 		const served = guide.replaceAll("$HOST", "https://vaiven.example");
 		expect(served).toContain("$KEY");
