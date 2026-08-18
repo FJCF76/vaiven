@@ -133,6 +133,67 @@ then priority. Completed items move to the bottom.
   test that enumerates files by name has the same shape, and the failure is silent — the
   suite goes green while coverage quietly shrinks.
 
+- **Error shape gives an agent no machine-readable retry semantics.**
+  **Priority:** P1
+  `unauthorized` (retry with another key), `revoked` (never), `disabled` (never), `conflict`
+  (retry after merge), `rate_limited` (retry after N), `quota_exceeded` (only after deleting)
+  are six different behaviours, and the only way to tell them apart is parsing English out of
+  `hint`. `guide/errors.md` says "branch on `code`, never on the message" and then leaves the
+  retry decision in the message. Add a boolean to the error object. Surfaced by /autoplan DX.
+
+- **`resolve_by` would encode who can actually fix an error.**
+  **Priority:** P2
+  Four parties exist — the agent, the human in its conversation, whoever sent the link, the
+  instance operator — and which one applies is carried only in prose. `resolve_by: "self" |
+  "user" | "sender" | "operator"` is the structural version of the CLI-misdirection bug just
+  fixed, and would survive future copy drift.
+
+- **Auth runs before routing, so a typo'd path reports as an auth failure.**
+  **Priority:** P2
+  `requireScope` is called at `src/routes/router.ts:26`, before dispatch. An unauthenticated
+  request to a nonexistent path returns 401 asserting "This route needs a key" — naming a
+  route that may not exist. This is believed to be part of what sent the reporting agent
+  hunting for credentials rather than checking its URL.
+
+- **405 returns `code: "invalid"`, which means "malformed body" everywhere else.**
+  **Priority:** P2
+  `methodNotAllowedWith` (`src/routes/router.ts:98`) sets status 405 but code `invalid`. An
+  agent following "branch on code" cannot tell a bad verb from bad JSON. Needs its own code.
+
+- **No `WWW-Authenticate` header on 401.** **Priority:** P3
+  RFC 9110 requires it; some HTTP client wrappers surface a challenge-less 401 as a transport
+  error rather than an auth error. One line.
+
+- **Recovery data sits outside the `error` object.** **Priority:** P2
+  `retry_after`, and `version`/`state` on 409, land at the body top level via `extra`. An agent
+  parsing `body.error.*` uniformly — the obvious read given the shape — misses every piece of
+  recovery data. Either move them inside or say so explicitly in the guide.
+
+- **`not_found` covers four different things** (route, document, key, version) with an unused
+  `field` slot already in `ErrorDetail`. **Priority:** P3
+
+- **`guide` is the same URL for 8 of 12 codes**, so it reads like a per-error deep link and is
+  not. Anchor it or stop implying specificity. **Priority:** P3
+
+- **`upstream_error` is declared and never thrown**, and appears in neither error table, while
+  guide.md claims "every code, so you never have to fetch anything to recover". Delete it or
+  document it. **Priority:** P2
+
+- **Frozen until a non-author human has used a document:** the role gate naming the manual's two
+  audiences, section reordering so the agent HTTPS path is first, a first-success probe, and
+  regression guards over guide text. Unfrozen by evidence, not by preference. See
+  `docs/designs/agent-onboarding.md`.
+
+- **The instance-model decision must not ride in on a docs branch.**
+  **Priority:** P1
+  `docs/designs/vaiven-v1.md:950` ("self-hostable by others, or one instance?") needs its own
+  one-page decision. Note for whoever takes it: "self-hosting by cloning" makes adoption
+  **unobservable**, and the kill criterion is a count — if usage cannot be counted the criterion
+  can never fire, and the project neither succeeds nor stops. Alternatives never costed:
+  invite-gated `POST /api/tenants`; a public demo tenant with short expiry and tiny quota (the
+  10x reframe — the sandbox host, CSP and quota machinery that makes it safe already exists);
+  publishing the CLI.
+
 ## Product
 
 - **The sender is never named.**

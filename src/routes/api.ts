@@ -92,7 +92,7 @@ function requireScope(db: Database, request: Request, config: Config): Scope {
 	if (!token) {
 		anonymous();
 		fail("unauthorized", "This route needs a key.", {
-			hint: `Send it as "Authorization: Bearer <key>". A tenant key comes from \`vaiven tenant create\`; a document key comes from the response that created the document.`,
+			hint: `Send it as "Authorization: Bearer <key>". If you were sent a link, the document key is in it — that is the least-privileged key and usually the one you want. Tenant keys are different: they are minted only on the server host, so no request you can make will produce one. If you need tenant scope at ${config.appOrigin}, stop and ask the human you are working with.`,
 		});
 	}
 	const resolved = resolveWithReason(db, token);
@@ -103,16 +103,16 @@ function requireScope(db: Database, request: Request, config: Config): Scope {
 		// disabled tenant the same way hides an operator action behind a key problem.
 		if (resolved.failure === "revoked") {
 			fail("revoked", "That key has been revoked.", {
-				hint: "The key is well formed; someone turned it off. Ask whoever owns the document for a new one, or mint one with `vaiven key add <doc>`.",
+				hint: "The token was recognised and has been revoked. It will never work again — do not retry it. Ask whoever sent you the link for a replacement. If you hold a tenant key, `POST /api/docs/<doc-id>/keys` mints a new document key over HTTP.",
 			});
 		}
 		if (resolved.failure === "disabled") {
 			fail("disabled", "This tenant is disabled.", {
-				hint: "Nothing is wrong with the key. An operator disabled the tenant; `vaiven tenant enable <id>` turns it back on.",
+				hint: `The key is fine. Its tenant is switched off, so every key under it fails identically. Nothing you send changes this and retrying will not help: stop, and tell the human you are working with that the tenant at ${config.appOrigin} is disabled and needs the instance operator to re-enable it.`,
 			});
 		}
 		fail("unauthorized", "That key is not valid.", {
-			hint: "Check that you copied the whole key. A tenant key comes from `vaiven tenant create`; a document key comes from the response that created the document.",
+			hint: `No key on this instance matches that token, and keys are per-instance — one issued for a different host will not work at ${config.appOrigin}. Retrying the SAME token will not help. Check it was not truncated and that it belongs to this host; tenant keys cannot be minted over HTTP, so if it is simply the wrong key, ask the human you are working with for one valid at this host.`,
 		});
 	}
 	const scope = resolved.scope;
@@ -129,7 +129,7 @@ function requireCap(scope: Scope, capability: Capability, docId?: string): void 
 		});
 	}
 	fail("read_only", "That key is not allowed to do this.", {
-		hint: "Key management, deletion, publishing content and forced writes are tenant-scoped. Use the tenant key from `vaiven tenant create`.",
+		hint: "This needs a tenant key and you are holding a document key. Tenant scope: publish content, delete a document, mint, revoke and list keys, set the webhook, list and restore state versions, and `?force=1`. A document key may read, write state and append events. Nothing is wrong with your key — ask whoever gave it to you for a tenant key.",
 	});
 }
 
@@ -215,7 +215,7 @@ function parseIfMatch(request: Request): number | null {
 
 async function createDoc(db: Database, request: Request, config: Config, scope: Scope): Promise<Response> {
 	requireCap(scope, "doc.create");
-	if (scope.kind !== "tenant") fail("read_only", "Only a tenant key can create documents.", { hint: "Use `vaiven tenant create` to get one." });
+	if (scope.kind !== "tenant") fail("read_only", "Only a tenant key can create documents.", { hint: `Creating documents needs a tenant key; a document key is bound to one existing document and cannot be widened. Ask the human you are working with for the tenant key for ${config.appOrigin}.` });
 
 	enforceRate(`w:${scope.tenantId}`, RATES.write, "writes");
 	const body = await readJson(request, LIMITS.contentBytes + 65536, "request");
@@ -333,14 +333,14 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 
 	if ("docLimit" in outcome) {
 		fail("quota_exceeded", "This tenant is at its document limit.", {
-			hint: "Nothing was created. Delete a document you no longer need with `DELETE /api/docs/:id`, or raise the limit with `vaiven tenant set`.",
+			hint: "Nothing was created. Delete a document you no longer need with `DELETE /api/docs/<id>` — that needs a tenant key. The cap itself can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: outcome.limit,
 			actual: outcome.actual,
 		});
 	}
 	if ("quota" in outcome) {
 		fail("quota_exceeded", "This tenant is out of storage.", {
-			hint: "Nothing was created. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			hint: "Nothing was created. Free space with `DELETE /api/docs/<id>`, which needs a tenant key. The byte cap can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: outcome.limit,
 			actual: outcome.actual,
 		});

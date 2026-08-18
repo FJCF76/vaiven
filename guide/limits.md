@@ -4,7 +4,7 @@
 |---|---|---|
 | `content` | 4 MB | Your page has no network, so images and fonts are inlined as `data:` URIs and count toward this. |
 | `state` | 1 MB | State is the document's data. Assets belong in `content`. |
-| documents per tenant | 100 | Raise with `vaiven tenant set --max-docs`. |
+| documents per tenant | 100 | Only the instance operator can raise it. |
 | storage per tenant | 100 MB | `content` plus `state`. Version history is budgeted separately. |
 | writes | 120/min | Per tenant, or per document key. |
 | reads of the read URL | 600/min | Per document. |

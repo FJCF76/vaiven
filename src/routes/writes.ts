@@ -91,7 +91,7 @@ export async function putState(
 	const delta = nextBytes - doc.state_bytes;
 	if (delta > 0 && tenant.used_bytes + delta > tenant.max_bytes) {
 		fail("quota_exceeded", "This tenant is out of storage.", {
-			hint: "Nothing was stored. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			hint: "Nothing was stored. Free space with `DELETE /api/docs/<id>`, which needs a tenant key. The byte cap can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: tenant.max_bytes,
 			actual: tenant.used_bytes + delta,
 		});
@@ -250,7 +250,7 @@ export async function putState(
 
 	if ("quota" in result) {
 		fail("quota_exceeded", "This tenant is out of storage.", {
-			hint: "Nothing was stored. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			hint: "Nothing was stored. Free space with `DELETE /api/docs/<id>`, which needs a tenant key. The byte cap can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: result.limit,
 			actual: result.actual,
 		});
@@ -564,7 +564,7 @@ export async function putContent(
 	}
 	if ("quota" in outcome) {
 		fail("quota_exceeded", "This tenant is out of storage.", {
-			hint: "Nothing was stored. Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			hint: "Nothing was stored. Free space with `DELETE /api/docs/<id>`, which needs a tenant key. The byte cap can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: outcome.limit,
 			actual: outcome.actual,
 		});
@@ -880,7 +880,7 @@ export async function restoreVersion(
 	}
 	if ("quota" in outcome) {
 		fail("quota_exceeded", "This tenant is out of storage, so nothing was restored.", {
-			hint: "Delete a document, or raise the limit with `vaiven tenant set --max-bytes`.",
+			hint: "Free space with `DELETE /api/docs/<id>`, which needs a tenant key. The byte cap can only be raised by the instance operator, so retrying unchanged will fail identically.",
 			limit: outcome.limit,
 			actual: outcome.actual,
 		});
