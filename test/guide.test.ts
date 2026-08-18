@@ -8,8 +8,24 @@
 
 import { describe, expect, test } from "bun:test";
 
+import type { Config } from "../src/config.ts";
+import { serveGuide } from "../src/routes/static.ts";
+
 const guide = await Bun.file(new URL("../guide.md", import.meta.url)).text();
 const helper = await Bun.file(new URL("../src/shell/helper.js", import.meta.url)).text();
+
+/** Every page the server will serve, not just the front one. The sub-pages are where the
+ *  API is documented in depth, so they are where an invented signature would hide. */
+const SUB_PAGES = ["app-mode.md", "errors.md", "limits.md"];
+const pageText: Record<string, string> = { "/guide.md": guide };
+for (const name of SUB_PAGES) {
+	pageText[`/guide/${name}`] = await Bun.file(new URL(`../guide/${name}`, import.meta.url)).text();
+}
+const everyPage = Object.values(pageText).join("\n");
+
+const config = { appOrigin: "https://vaiven.example" } as unknown as Config;
+/** The real handler. Tests that reimplement its logic test the reimplementation. */
+const serve = async (path: string) => await (await serveGuide(config, path)).text();
 
 /** Every member the helper actually puts on `window.Vaiven`, read from that object literal
  *  alone so unrelated functions in the file cannot masquerade as public API. */
@@ -28,10 +44,13 @@ describe("the documented app-mode API matches the real one", () => {
 		});
 	}
 
-	test("nothing is documented that does not exist", () => {
-		for (const match of guide.matchAll(/Vaiven\.(\w+)/g)) {
-			expect(surface).toContain(match[1]!);
-		}
+	test("nothing is documented that does not exist, across every page", () => {
+		// Scans the sub-pages too: app-mode.md is where the API is described in depth, so it
+		// is where an invented signature would hide.
+		const mentioned = [...everyPage.matchAll(/Vaiven\.(\w+)/g)].map((m) => m[1]!);
+		// A loop over nothing passes vacuously; the manual must actually mention the API.
+		expect(mentioned.length).toBeGreaterThan(5);
+		for (const name of mentioned) expect(surface).toContain(name);
 	});
 });
 
@@ -44,19 +63,54 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 	});
 
 	test("every sub-page the guide names exists on disk", async () => {
-		const pages = [...guide.matchAll(/\$HOST\/guide\/([a-z-]+\.md)/g)].map((m) => m[1]!);
+		// [a-z0-9-] to match the server's own guard. `[a-z-]` silently skipped any page with
+		// a digit in its name, so the test's claim quietly became false without failing.
+		const pages = [...guide.matchAll(/\$HOST\/guide\/([a-z0-9-]+\.md)/g)].map((m) => m[1]!);
 		expect(pages.length).toBeGreaterThan(0);
 		for (const page of new Set(pages)) {
 			expect(await Bun.file(new URL(`../guide/${page}`, import.meta.url)).exists()).toBe(true);
 		}
 	});
 
-	test("the substitution leaves no placeholder behind in what is served", () => {
-		// What serveGuide does, applied here so the rule is pinned to a test rather than to
-		// one line in a route handler.
-		const served = guide.replaceAll("$HOST", "https://vaiven.example");
+	test("the SERVED page has no placeholder left in it", async () => {
+		// Through serveGuide, not through a copy of what serveGuide does. The previous
+		// version of this test reimplemented the replacement inline, so deleting the
+		// substitution from the route left every test passing while $HOST shipped raw.
+		const served = await serve("/guide.md");
 		expect(served).not.toContain("$HOST");
 		expect(served).toContain("https://vaiven.example/guide/app-mode.md");
+	});
+
+	test("every served page carries the version stamp", async () => {
+		for (const path of Object.keys(pageText)) {
+			expect(await serve(path)).toContain(`current version always at https://vaiven.example${path}`);
+		}
+	});
+
+	test("the stamp names the version the copy was taken at", async () => {
+		const version = (await Bun.file(new URL("../VERSION", import.meta.url)).text()).trim();
+		expect(await serve("/guide.md")).toContain(`*Vaivén ${version} ·`);
+	});
+
+	test("the served body is byte-stable, so diffing a copy against a fetch is meaningful", async () => {
+		expect(await serve("/guide.md")).toBe(await serve("/guide.md"));
+	});
+
+	test("the frontmatter still comes first, because this is read as a skill file", async () => {
+		expect((await serve("/guide.md")).startsWith("---\nname: vaiven")).toBe(true);
+	});
+
+	test("a page with no heading is still stamped rather than served bare", async () => {
+		// The stamp attaches after the first heading. Silently serving an unstamped page is
+		// the exact state it exists to prevent.
+		const served = await serve("/guide/limits.md");
+		expect(served).toContain("current version always at");
+	});
+
+	test("an unknown page is refused, and never reaches the stamp", async () => {
+		expect(await serve("/guide/nope.md")).toContain("Not written yet");
+		expect((await serveGuide(config, "/guide/Nope.MD")).status).toBe(404);
+		expect((await serveGuide(config, "/guide/../schema.sql")).status).toBe(404);
 	});
 
 	test("there is a heading for the freshness stamp to attach to", () => {
@@ -64,6 +118,16 @@ describe("the manual never asks an agent to construct a URL (A12)", () => {
 		// travels as a COPY into ~/.claude/skills/vaiven/SKILL.md, so without a version on
 		// it a correction made today never reaches anyone who installed yesterday.
 		expect(guide).toMatch(/^#\s.+$/m);
+	});
+
+	test("the substitution cannot be corrupted by $ sequences in the origin", () => {
+		// A string replacement interprets $&, $', $` and $$ INSIDE the replacement, so an
+		// origin carrying one would rewrite or truncate the manual. Config refuses such a
+		// host, and the substitution uses a replacer function; this pins the second lock.
+		const hostile = "https://a$'b$&c.example";
+		const served = guide.replaceAll("$HOST", () => hostile);
+		expect(served).toContain(`${hostile}/guide/app-mode.md`);
+		expect(served).not.toContain("$HOST");
 	});
 
 	test("$KEY and $DOC are deliberately left for the caller to fill in", () => {

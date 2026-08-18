@@ -76,6 +76,10 @@ Your page has **no network access at all** — no `fetch`, no CDN, no remote fon
 Inline everything, and embed assets as `data:` URIs. Everything else works: JavaScript,
 `eval`, canvas, WebGL, Web Workers, audio, animation, nested frames. Up to 4 MB.
 
+That 4 MB is the **page**. What people type lives in `state`, which has its own **1 MB**
+cap — the two do not share a budget, and it is `state` that grows as the document gets
+used. Fine for any form; worth a thought before you put a thousand rows in one document.
+
 If the person can **add, remove or reorder** rows, automatic mode cannot restore that
 structure on reload. Take over with app mode. That is the whole API:
 

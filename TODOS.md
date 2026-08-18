@@ -107,6 +107,18 @@ then priority. Completed items move to the bottom.
   `putState` truncates the id at 64 characters, so two long ids sharing a prefix collide.
   Unreachable from the shell, which sends a UUID.
 
+- **The stamp regex is fence-unaware.**
+  **Priority:** P3
+  It attaches after the first `^#\s` line. Every guide page today has a real H1 first and
+  no fenced block containing one, so this is latent — but a future sub-page whose first
+  `# ` line sits inside a ```bash block would get the stamp injected into the code.
+
+- **`VERSION` is read once at module load; guide files are read per request.**
+  **Priority:** P3
+  Editing a guide file on the box without restarting serves new content under the old
+  version stamp — the inversion of what the stamp is for. Moot on the supported path,
+  since `deploy/sync.sh` restarts the service.
+
 ## Product
 
 - **The sender is never named.**

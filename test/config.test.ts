@@ -58,6 +58,30 @@ describe("the two hosts", () => {
 	});
 });
 
+describe("the hostname itself", () => {
+	// appOrigin is spliced into `frame-ancestors`, into `frame-src`, into every URL handed
+	// to an agent, and into the manual. A malformed value fails OPEN in the CSP rather than
+	// loudly, and `$` sequences are interpreted as replacement patterns by String.replace,
+	// so an origin containing `$'` silently truncated the served manual.
+	for (const bad of ["x$&y.localhost", "a$'b.localhost", "has space.localhost", "evil/../.localhost", "a;b.localhost"]) {
+		test(`refuses ${JSON.stringify(bad)}`, () => {
+			const r = boot({ ...LOCAL, VAIVEN_APP_HOST: bad });
+			expect(r.code).toBe(2);
+			expect(r.out).toContain("not a hostname");
+		});
+	}
+
+	test("accepts an ordinary name", () => {
+		expect(boot(LOCAL).code).toBe(0);
+	});
+
+	test("accepts a bracketed IPv6 literal", () => {
+		// Over https: an IPv6 literal does not end in `.localhost`, so under `http` the
+		// plaintext refusal fires first — correctly, and for a different reason.
+		expect(boot({ VAIVEN_APP_HOST: "[::1]", VAIVEN_SANDBOX_HOST: "[::2]", VAIVEN_SCHEME: "https" }).code).toBe(0);
+	});
+});
+
 describe("plaintext", () => {
 	test("http with BOTH hosts on .localhost is allowed", () => {
 		expect(boot(LOCAL).code).toBe(0);
