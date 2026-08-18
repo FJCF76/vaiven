@@ -81,7 +81,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 169 unit tests, no server needed
+bun test          # 173 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
