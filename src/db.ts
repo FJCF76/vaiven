@@ -36,6 +36,23 @@ export function open(path: string, { readonly = false } = {}): Database {
 export function migrate(db: Database): void {
 	const sql = readFileSync(join(import.meta.dir, "..", "schema.sql"), "utf8");
 	db.exec(sql);
+
+	// CREATE TABLE IF NOT EXISTS does nothing for a column added to an existing table, so
+	// new columns need an explicit, idempotent ALTER. Kept as a list rather than a
+	// migration framework: v1 has no versioning story and this is the whole of it.
+	const columns = new Set(
+		db.query<{ name: string }, []>("PRAGMA table_info(docs)").all().map((row) => row.name),
+	);
+	for (const [name, definition] of [
+		["last_request_id", "TEXT"],
+		["last_request_version", "INTEGER"],
+		// A3's other half. `warnings` holds what serving the CONTENT noticed and is
+		// rewritten on every serve; field warnings come from the STATE and would be
+		// clobbered by that. Two columns, merged on read.
+		["field_warnings", "TEXT"],
+	] as const) {
+		if (!columns.has(name)) db.exec(`ALTER TABLE docs ADD COLUMN ${name} ${definition}`);
+	}
 }
 
 /**

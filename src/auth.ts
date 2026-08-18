@@ -185,16 +185,25 @@ const MAX_TRACKED_IPS = 20;
  */
 export function touchKey(db: Database, scope: Scope, ip: string | null): void {
 	if (scope.kind !== "doc") return;
+	touchKeyById(db, scope.keyId, ip);
+}
 
+/**
+ * The same thing for `/r/`, which resolves a key by hash without ever building a Scope.
+ * Without this the leak signal — `last_seen` and the distinct-IP count that `vaiven key
+ * list` prints — was blank for exactly the keys most likely to leak: the ones that travel
+ * in a URL people paste around.
+ */
+export function touchKeyById(db: Database, keyId: string, ip: string | null): void {
 	const now = Date.now();
-	const previous = lastTouch.get(scope.keyId) ?? 0;
+	const previous = lastTouch.get(keyId) ?? 0;
 	if (now - previous < TOUCH_INTERVAL_MS) return;
-	lastTouch.set(scope.keyId, now);
+	lastTouch.set(keyId, now);
 
 	try {
 		const row = db
 			.query<{ seen_ips: string }, [string]>("SELECT seen_ips FROM doc_keys WHERE id = ?")
-			.get(scope.keyId);
+			.get(keyId);
 
 		let ips: string[] = [];
 		if (row) {
@@ -211,7 +220,7 @@ export function touchKey(db: Database, scope: Scope, ip: string | null): void {
 		db.query("UPDATE doc_keys SET last_seen = ?, seen_ips = ? WHERE id = ?").run(
 			now,
 			JSON.stringify(ips),
-			scope.keyId,
+			keyId,
 		);
 	} catch {
 		// Telemetry only. A locked database here must not turn a successful read into a 500.
@@ -241,5 +250,5 @@ export function bearerFrom(request: Request): string | null {
 	const header = request.headers.get("authorization");
 	if (!header) return null;
 	const match = header.match(/^Bearer\s+(.+)$/i);
-	return match ? match[1].trim() : null;
+	return match?.[1] ? match[1].trim() : null;
 }

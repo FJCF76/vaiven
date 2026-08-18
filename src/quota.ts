@@ -31,6 +31,28 @@ export const RATES = {
 	anonymous: 300,
 } as const;
 
+/**
+ * Refuse an over-long text field rather than quietly shortening it.
+ *
+ * These three used to be clamped in place, which contradicted both the build rule ("nothing
+ * is truncated silently") and the guide's own promise that a size cap returns 413 and
+ * stores nothing. A title that comes back shorter than it was sent is the kind of thing
+ * nobody notices until the document is in front of someone else.
+ */
+export function requireWithin(value: unknown, limit: number, field: string, what: string): string {
+	const text = typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+	const length = [...text].length;
+	if (length > limit) {
+		fail("too_large", `That ${what} is longer than the limit.`, {
+			hint: `Send at most ${limit} characters. Nothing was stored, so retrying with a shorter ${what} is safe.`,
+			limit,
+			actual: length,
+			field,
+		});
+	}
+	return text;
+}
+
 // ---------------------------------------------------------------------- the client IP
 
 /**
@@ -42,6 +64,10 @@ export const RATES = {
  * bucket, and an unbounded set of buckets is a memory exhaustion primitive.
  */
 export function clientIp(request: Request, config: Config): string {
+	// With no proxy configured, the header is entirely client-supplied and must be
+	// ignored outright rather than consulted.
+	if (config.trustedProxyHops === 0) return "unknown";
+
 	const header = request.headers.get("x-forwarded-for");
 	if (!header) return "unknown";
 
@@ -52,7 +78,11 @@ export function clientIp(request: Request, config: Config): string {
 	if (hops.length === 0) return "unknown";
 
 	const index = hops.length - config.trustedProxyHops;
-	return (index >= 0 && index < hops.length ? hops[index] : hops[0]) ?? "unknown";
+	// Falling back to hops[0] when the chain is shorter than configured hands the caller
+	// its own bucket — precisely what counting from the right exists to prevent, and an
+	// unbounded set of buckets is a memory-exhaustion primitive.
+	if (index < 0 || index >= hops.length) return "unknown";
+	return hops[index] ?? "unknown";
 }
 
 // -------------------------------------------------------------------- the rate limiter

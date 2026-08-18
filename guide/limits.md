@@ -11,9 +11,17 @@
 | API reads | 400/min | Includes the shell's poll. Read once per turn; you do not need to poll. |
 | events per write | 200 | Above ten changes to one array, they collapse into a single summary. |
 | event field values | 200 characters | Longer values are truncated with `…`. The full value is always in `state`. |
+| `title` | 200 characters | Refused, not shortened — see below. |
+| `sender_note` | 500 characters | Shown to the person above the document. |
+| key labels | 80 characters | This is what `actor` shows in the log. |
 
 Exceeding a size cap returns `413` **and stores nothing** — the document is unchanged, so
-retrying with something smaller is always safe.
+retrying with something smaller is always safe. That includes the short text fields: a
+title one character over the limit is refused rather than quietly shortened, because a
+title that comes back different from the one you sent is worse than an error you can see.
+
+The one deliberate exception is event field values, which are summaries by design; the full
+value is always in `state`, and the truncation is marked with `…`.
 
 Exceeding a quota returns `507`. Exceeding a rate returns `429` with `retry_after` in the
 body as well as the header.

@@ -9,9 +9,17 @@
 (() => {
 	"use strict";
 
+	// Substituted at injection time with the app origin. Both ends of this channel used to
+	// be unauthenticated at the message layer and rested entirely on `frame-ancestors`: the
+	// helper broadcast every keystroke to whatever framed it, and trusted the state and the
+	// mode it was handed from the same unchecked source. Now the trust decision is made
+	// twice, independently of the header — so a proxy or a refactor that drops the header
+	// does not silently open the channel.
+	const PARENT_ORIGIN = "__VAIVEN_APP_ORIGIN__";
+
 	const send = (message) => {
 		try {
-			parent.postMessage(message, "*");
+			parent.postMessage(message, PARENT_ORIGIN);
 		} catch {
 			// Direct navigation to /c/:id has no parent. That is a supported way to view
 			// content; it simply records nothing.
@@ -96,7 +104,13 @@
 	/** A3: a field with no `name` gets a structural path, prefixed so it is visibly
 	 *  distinct from an author-chosen key and can be reported as a warning. */
 	function pathOf(element) {
-		if (element.name) return element.name;
+		// `element.name` is a PROPERTY, and only form controls have one. A
+		// `<div contenteditable name="summary">` — the natural way to build the living
+		// document this system is named after — has the attribute and not the property, so
+		// it fell through to a structural path and could never have a stable key. Read the
+		// attribute when the property is absent.
+		const named = element.name || element.getAttribute("name");
+		if (named) return named;
 
 		const parts = [];
 		let node = element;
@@ -277,6 +291,29 @@
 		}
 	});
 
+	/**
+	 * A10: shadow DOM is the one field-type case automatic mode cannot serve at all.
+	 * `querySelectorAll` does not pierce a shadow root, and an `input` event that crosses
+	 * one is retargeted to the HOST, so the path recorded would name the wrong element.
+	 * Rather than capture nothing and say nothing, say so once.
+	 */
+	let warnedShadow = false;
+	function checkShadowFields() {
+		if (appMode || warnedShadow) return;
+		for (const element of document.querySelectorAll("*")) {
+			if (!element.shadowRoot) continue;
+			if (!element.shadowRoot.querySelector(FIELDS)) continue;
+			warnedShadow = true;
+			send({
+				type: "error",
+				kind: "shadow_dom",
+				detail:
+					"Fields inside a shadow root are not captured by automatic mode: the DOM cannot be read across the boundary and events are retargeted to the host. Call Vaiven.render() and manage that state yourself.",
+			});
+			return;
+		}
+	}
+
 	// ----------------------------------------------------------------- public surface
 
 	window.Vaiven = {
@@ -330,6 +367,7 @@
 
 	addEventListener("message", (event) => {
 		if (event.source !== parent) return;
+		if (event.origin !== PARENT_ORIGIN) return;
 		const message = event.data;
 		if (!message || typeof message !== "object") return;
 
@@ -351,6 +389,7 @@
 
 	const announceReady = () => {
 		applyReadonly();
+		checkShadowFields();
 		observer.observe(document.documentElement, { childList: true, subtree: true });
 		addEventListener("resize", reportHeight);
 		reportHeight();

@@ -50,7 +50,7 @@ function recompute(): Drift[] {
 		.all()
 		.map((tenant) => {
 			const real = db
-				.query<{ total: number }, [string]>(
+				.query<{ total: number }, [string, string]>(
 					`SELECT coalesce(sum(d.state_bytes), 0) + coalesce((
 					   SELECT sum(c.bytes) FROM doc_content c
 					    JOIN docs dd ON dd.id = c.doc_id WHERE dd.tenant_id = ?), 0) AS total
@@ -147,7 +147,7 @@ await api(`/api/docs/${id}`, { method: "DELETE" });
 assertNoDrift("counters agree after delete");
 
 const orphans = db
-	.query<{ n: number }, [string]>(
+	.query<{ n: number }, [string, string, string, string]>(
 		`SELECT (SELECT count(*) FROM doc_keys WHERE doc_id = ?)
 		      + (SELECT count(*) FROM events WHERE doc_id = ?)
 		      + (SELECT count(*) FROM state_versions WHERE doc_id = ?)

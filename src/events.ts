@@ -132,10 +132,17 @@ export function reconcileVids(previous: unknown, next: unknown): unknown {
 			}
 
 			const merged = reconcileVids(source, element) as Record<string, unknown>;
-			if (typeof merged[VID] !== "string") {
-				merged[VID] =
-					isPlainObject(source) && typeof source[VID] === "string" ? (source[VID] as string) : newVid();
+			const carried = typeof merged[VID] === "string" ? (merged[VID] as string) : null;
+
+			// A client can echo the same id twice — by duplicating a row, or maliciously.
+			// Letting both keep it makes the alignment map collide, after which two rows
+			// diff against one previous element and edits land on the wrong row.
+			if (carried === null || claimed.has(carried)) {
+				const inherited =
+					isPlainObject(source) && typeof source[VID] === "string" ? (source[VID] as string) : null;
+				merged[VID] = inherited && !claimed.has(inherited) ? inherited : newVid();
 			}
+			claimed.add(merged[VID] as string);
 			out[index] = merged;
 		}
 
@@ -176,12 +183,51 @@ function scalarString(value: unknown): string {
 	return JSON.stringify(value) ?? "";
 }
 
+/** Multiset comparison: what left, what arrived, ignoring order. */
+function diffScalarArray(path: string, before: unknown[], after: unknown[], out: DerivedEvent[]): void {
+	const counts = new Map<string, number>();
+	for (const value of before) counts.set(scalarString(value), (counts.get(scalarString(value)) ?? 0) + 1);
+	for (const value of after) {
+		const key = scalarString(value);
+		const remaining = counts.get(key) ?? 0;
+		counts.set(key, remaining - 1);
+	}
+
+	const local: DerivedEvent[] = [];
+	for (const [value, count] of counts) {
+		for (let i = 0; i < count; i++) local.push({ kind: "edit", field: path, op: "remove", item: clamp(value, 40) });
+		for (let i = 0; i < -count; i++) local.push({ kind: "edit", field: path, op: "add", item: clamp(value, 40) });
+	}
+
+	if (local.length === 0) return;
+	if (local.length > COLLAPSE_AT) {
+		out.push({
+			kind: "edit",
+			field: path,
+			from: `${before.length} items`,
+			to: `${after.length} items`,
+			item: `${local.length} changed`,
+		});
+		return;
+	}
+	out.push(...local);
+}
+
 function diffArray(path: string, before: unknown[], after: unknown[], out: DerivedEvent[]): void {
 	const beforeById = new Map<string, Record<string, unknown>>();
 	for (const element of before) {
 		if (isPlainObject(element) && typeof element[VID] === "string") {
 			beforeById.set(element[VID] as string, element);
 		}
+	}
+
+	// Arrays of plain values — tags, a multi-select, a checklist of strings — carry no
+	// identity to align on, so the object path below skips them entirely and the change
+	// is invisible in the log. Compare them as a multiset instead.
+	const identifiable = (value: unknown) => isPlainObject(value) && typeof value[VID] === "string";
+	if (!before.some(identifiable) && !after.some(identifiable)) {
+		diffScalarArray(path, before, after, out);
+		return;
 	}
 
 	const afterIds = new Set<string>();
@@ -266,7 +312,20 @@ function diffValue(path: string, before: unknown, after: unknown, out: DerivedEv
 export function deriveEvents(before: unknown, after: unknown): DerivedEvent[] {
 	const out: DerivedEvent[] = [];
 	diffValue("", before ?? {}, after ?? {}, out);
-	return out.slice(0, LIMITS.eventsPerWrite);
+
+	if (out.length <= LIMITS.eventsPerWrite) return out;
+
+	// "Nothing is ever truncated silently" applies to the log too. A history that just
+	// stops mid-way, with nothing saying so, is worse than one that admits the gap.
+	const kept = out.slice(0, LIMITS.eventsPerWrite - 1);
+	kept.push({
+		kind: "edit",
+		field: "state",
+		item: `${out.length - kept.length} further changes were not itemised`,
+		from: `${out.length} changes`,
+		to: `${kept.length} recorded`,
+	});
+	return kept;
 }
 
 // ------------------------------------------------------------------------ annotations
@@ -302,8 +361,37 @@ export function validateAnnotations(input: unknown): Annotation[] {
  */
 export function safeParse(text: string): unknown {
 	return JSON.parse(text, function reviver(key, value) {
-		if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+		// Only __proto__ actually reassigns a prototype through JSON.parse. Dropping keys
+		// named `constructor` or `prototype` as well would silently discard a form field
+		// that a person legitimately named that, and every object here is null-prototype
+		// anyway, so neither is reachable as a behaviour.
+		if (key === "__proto__") return undefined;
 		if (isPlainObject(value)) return Object.assign(Object.create(null), value);
 		return value;
 	});
+}
+
+// ------------------------------------------------------------------- field warnings
+
+/**
+ * A3: a field with no `name` is stored under a structural path prefixed with `~`, and the
+ * agent has to be told — otherwise it reads a key like `~div:nth-child(2)>input:nth-child(1)`
+ * and has to guess whether that is a bug, a convention, or something it wrote itself.
+ *
+ * Computed at write time and stored, because the alternative is scanning up to a megabyte
+ * of JSON on a route that answers 600 times a minute.
+ */
+export function fieldWarnings(state: unknown): { code: string; message: string; paths: string[] }[] {
+	if (!isPlainObject(state)) return [];
+	const paths = Object.keys(state).filter((key) => key.startsWith("~"));
+	if (paths.length === 0) return [];
+
+	return [
+		{
+			code: "unnamed_fields",
+			message:
+				"Some fields have no `name` attribute, so their values are stored under a structural path starting with `~`. Those paths change if you edit the markup around them, and the stored value is then stranded under the old key. Add a `name` to every field you want to read back.",
+			paths: paths.slice(0, 20),
+		},
+	];
 }

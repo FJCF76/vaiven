@@ -261,3 +261,40 @@ describe("threeWayMerge", () => {
 		expect(threeWayMerge({ a: "1" }, { a: "1" }, { a: "2" })).toEqual({ a: "2" });
 	});
 });
+
+describe("threeWayMerge, nested", () => {
+	test("keeps their sibling field when we edit a different one in the same object", () => {
+		const base = { contact: { email: "a@x", phone: "111" }, other: 1 };
+		const ours = { contact: { email: "b@x", phone: "111" }, other: 1 };
+		const theirs = { contact: { email: "a@x", phone: "222" }, other: 1 };
+		expect(threeWayMerge(base, ours, theirs)).toEqual({
+			contact: { email: "b@x", phone: "222" },
+			other: 1,
+		});
+	});
+
+	test("recurses more than one level", () => {
+		const base = { a: { b: { c: 1, d: 1 } } };
+		const ours = { a: { b: { c: 2, d: 1 } } };
+		const theirs = { a: { b: { c: 1, d: 3 } } };
+		expect(threeWayMerge(base, ours, theirs)).toEqual({ a: { b: { c: 2, d: 3 } } });
+	});
+
+	test("our value still wins on the same nested field", () => {
+		const base = { a: { b: 1 } };
+		const ours = { a: { b: 2 } };
+		const theirs = { a: { b: 3 } };
+		expect(threeWayMerge(base, ours, theirs)).toEqual({ a: { b: 2 } });
+	});
+
+	test("a nested object replaced by a scalar is taken whole", () => {
+		expect(threeWayMerge({ a: { b: 1 } }, { a: "gone" }, { a: { b: 2 } })).toEqual({ a: "gone" });
+	});
+
+	test("their new nested key survives when we did not touch that object", () => {
+		const base = { a: { b: 1 } };
+		const ours = { a: { b: 1 }, c: 9 };
+		const theirs = { a: { b: 1, extra: true } };
+		expect(threeWayMerge(base, ours, theirs)).toEqual({ a: { b: 1, extra: true }, c: 9 });
+	});
+})

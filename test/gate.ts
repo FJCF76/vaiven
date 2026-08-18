@@ -187,16 +187,42 @@ async function gateBrowser(browser: Browser): Promise<void> {
 async function probeSelfNavigation(browser: Browser): Promise<void> {
 	console.log("\nPROBE — frame self-navigation (recorded, not blocking)");
 
+	// A REAL document with a REAL write key. The earlier version navigated to `/d/probe`
+	// with no `#k=`, which the shell rejects before it ever creates a frame — so this probe
+	// printed "skipped" on every run and the whole iframe trust boundary (the A4 load
+	// counter, the ready gate, the postMessage path) was never executed by any test.
+	const tenantKey = process.env.VAIVEN_TENANT_KEY;
+	if (!tenantKey) {
+		console.log("         VAIVEN_TENANT_KEY not set — cannot mint a document, skipped");
+		return;
+	}
+
+	const created = await (
+		await fetch(`${config.appOrigin}/api/docs`, {
+			method: "POST",
+			headers: { authorization: `Bearer ${tenantKey}`, "content-type": "application/json" },
+			body: JSON.stringify({
+				title: "self-navigation probe",
+				content: `<!doctype html><html><head><title>probe</title></head><body><input name="a" value="1"></body></html>`,
+				state: {},
+			}),
+		})
+	).json();
+	const docId: string = created.id;
+	const writeKey: string = created.keys.find((k: { role: string }) => k.role === "write").key;
+
 	const page = await browser.newPage();
-	await page.goto(`${config.appOrigin}/d/probe`, { waitUntil: "load", timeout: 30_000 });
+	await page.goto(`${config.appOrigin}/d/${docId}#k=${writeKey}`, { waitUntil: "load", timeout: 30_000 });
+	await page.waitForSelector("iframe", { timeout: 15_000 });
 	await page.waitForTimeout(1500);
 
 	const frame = page.frames().find((f) => f !== page.mainFrame());
 	if (!frame) {
-		console.log("         no child frame found — skipped");
+		report(false, "probe: a child frame exists to test at all");
 		await page.close();
 		return;
 	}
+	report(true, "probe: the shell created a frame for a real document");
 
 	const before = frame.url();
 	try {
@@ -216,6 +242,17 @@ async function probeSelfNavigation(browser: Browser): Promise<void> {
 			: "         RESULT: self-navigation did not take effect here.",
 	);
 	console.log("         Either way the onload counter ships — the probe records, it does not decide.");
+
+	// The counter is what actually enforces this, so assert its EFFECT rather than the
+	// engine's behaviour: after an attempted self-navigation the shell must stop treating
+	// the frame as live. Either it tore the frame down, or the frame is still the one it
+	// hydrated — never a foreign document still receiving state.
+	const survivor = page.frames().find((f) => f !== page.mainFrame());
+	report(
+		!survivor || !survivor.url().includes("example.com"),
+		"probe: no frame that navigated away is still attached and receiving state",
+		survivor?.url() ?? "(no frame)",
+	);
 
 	await page.close();
 }

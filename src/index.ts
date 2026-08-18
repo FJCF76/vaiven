@@ -58,9 +58,16 @@ async function appRoutes(request: Request, url: URL): Promise<Response> {
 		return serveShell(request, config, id);
 	}
 
-	if (path === "/guide.md" || path.startsWith("/guide/")) return serveGuide(config, path);
+	// A13 lists these as unlimited surfaces to cover. Each one reads from disk per request.
+	if (path === "/guide.md" || path.startsWith("/guide/")) {
+		enforceRate(`g:${clientIp(request, config)}`, RATES.anonymous, "requests");
+		return serveGuide(config, path);
+	}
 	if (path === "/shell.js" || path === "/shell.css") return serveStatic(path);
-	if (path === "/") return serveIndex(request, config);
+	if (path === "/") {
+		enforceRate(`g:${clientIp(request, config)}`, RATES.anonymous, "requests");
+		return serveIndex(request, config);
+	}
 
 	return notFound();
 }
@@ -99,7 +106,11 @@ const server = Bun.serve({
 			return surface === "app" ? await appRoutes(request, url) : await sandboxRoutes(request, url);
 		} catch (error) {
 			if (error instanceof ApiError) return errorResponse(error, config.appOrigin);
-			console.error(`[error] ${request.method} ${url.pathname}`, error);
+			// For /r/<read_key>.json the path IS the bearer secret, and this journal is
+			// retained and shipped. Caddy's access log is discarded for exactly this
+			// reason; logging it here would hand it straight back.
+			const safePath = url.pathname.startsWith("/r/") ? "/r/<redacted>.json" : url.pathname;
+			console.error(`[error] ${request.method} ${safePath}`, error);
 			return text("internal error\n", 500);
 		}
 	},

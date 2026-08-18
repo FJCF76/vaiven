@@ -19,7 +19,6 @@ export interface Warning {
 }
 
 const DOCTYPE_AT_START = /^\s*<!doctype\b[^>]*>/i;
-const HAS_HEAD = /<head[\s>]/i;
 
 /**
  * Wrap the helper for injection. Kept as one `<script>` with no attributes so that the
@@ -80,24 +79,29 @@ export async function prepareContent(rawHtml: string, helper: string): Promise<P
 		html = `<!doctype html>\n${html}`;
 	}
 
-	if (!HAS_HEAD.test(html)) {
-		// Case 2. Splice a head in after the doctype so the helper still runs first,
-		// with the doctype left exactly where it has to be.
-		const match = html.match(DOCTYPE_AT_START)!;
-		const doctype = match[0];
-		const rest = html.slice(doctype.length);
-		return { html: `${doctype}\n<head>${scriptTag(helper)}</head>${rest}`, warnings };
-	}
-
-	// Case 1.
+	// Ask the PARSER whether a head exists, rather than testing the raw text. A regex
+	// cannot tell `<head>` the element from `<head>` inside a comment, a string literal or
+	// a textarea — and when it guessed wrong the rewriter's handler never fired, so the
+	// helper was silently not injected at all: the frame never announces itself, the shell
+	// waits on a skeleton forever, and read-only enforcement never runs.
+	let injected = false;
 	const rewritten = await new HTMLRewriter()
 		.on("head", {
 			element(element) {
+				if (injected) return;
+				injected = true;
 				element.prepend(scriptTag(helper), { html: true });
 			},
 		})
 		.transform(new Response(html))
 		.text();
 
-	return { html: rewritten, warnings };
+	if (injected) return { html: rewritten, warnings };
+
+	// No head element in the parsed document: synthesise one after the doctype, leaving
+	// the doctype exactly where it has to be.
+	const match = html.match(DOCTYPE_AT_START)!;
+	const doctype = match[0];
+	const rest = html.slice(doctype.length);
+	return { html: `${doctype}\n<head>${scriptTag(helper)}</head>${rest}`, warnings };
 }

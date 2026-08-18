@@ -20,6 +20,8 @@ export interface ContentResult {
 	contentVersion: number;
 }
 
+export const isFixture = (id: string): boolean => id in FIXTURES;
+
 export async function lookup(db: Database | null, id: string): Promise<ContentResult | null> {
 	const fixture = FIXTURES[id];
 	if (fixture) {
