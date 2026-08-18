@@ -54,14 +54,20 @@ body {
 	z-index: 10;
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	/* The status and both buttons refuse to shrink, so on a phone the identity block was
+	   the only thing left to squeeze: the title collapsed to a single character and the
+	   name below it wrapped to three lines and ran into the save status. The bar wraps to
+	   two rows instead, which is what it should have done at 390px all along. */
+	flex-wrap: wrap;
+	gap: 4px 12px;
 	min-height: 44px;
 	padding: 6px 14px;
 	background: var(--surface);
 	border-bottom: 1px solid var(--rule);
 }
 
-.identity { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+/* A basis wide enough to hold a real title, and allowed to grow on a wide screen. */
+.identity { display: flex; flex-direction: column; min-width: 0; flex: 1 1 11rem; }
 
 .title {
 	font-size: 14px;
@@ -71,11 +77,18 @@ body {
 	text-overflow: ellipsis;
 }
 
-.who { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+/* Truncates like the title. A name is not a log line, so it is set in the text face. */
+.who {
+	font-size: 12px;
+	color: var(--muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
 
 .status {
 	font-family: var(--mono);
-	font-size: 11px;
+	font-size: 12px;
 	color: var(--muted);
 	white-space: nowrap;
 }
