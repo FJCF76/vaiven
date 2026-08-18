@@ -69,6 +69,8 @@ export class Writer {
 	private debounceTimer: unknown = null;
 	private maxWaitAt = 0;
 	private attempt = 0;
+	/** A7: one idempotency key per batch, held across retries. Cleared on success or rebase. */
+	private batchId: string | null = null;
 	private writeTimes: number[] = [];
 
 	constructor(private readonly deps: WriterDeps) {}
@@ -165,7 +167,15 @@ export class Writer {
 		const events = this.pendingEvents;
 		// A7: an idempotency key, so a timeout where the server DID commit does not come
 		// back as a 409 whose recovery path discards edits that were actually saved.
-		const requestId = this.deps.randomId();
+		//
+		// Minted once per BATCH, not per attempt. It used to be generated here, inside the
+		// function the retry timer re-enters, so every retry carried a fresh id, the
+		// server's replay check could never match, and the annotations from the attempt
+		// that HAD committed were inserted a second time — someone who pressed "Done for
+		// now" during a flaky moment recorded as done twice, which is the exact thing the
+		// key exists to prevent.
+		this.batchId ??= this.deps.randomId();
+		const requestId = this.batchId;
 
 		const outcome = await this.deps.put({ state, events, ifMatch: this.baseVersion, requestId });
 
@@ -173,6 +183,7 @@ export class Writer {
 
 		if (outcome.ok && outcome.version !== undefined) {
 			this.attempt = 0;
+			this.batchId = null;
 			// Only clear what we actually sent; anything typed meanwhile stays pending.
 			if (this.pendingState === state) {
 				this.pendingState = null;
@@ -193,6 +204,8 @@ export class Writer {
 		}
 
 		if (outcome.conflict) {
+			// A merge produces a genuinely different write, so it gets a new key.
+			this.batchId = null;
 			this.reconcile(outcome.conflict.state, outcome.conflict.version);
 			return;
 		}

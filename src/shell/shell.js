@@ -94,24 +94,42 @@ function setStatus(text, kind) {
 }
 
 /**
- * One slot, eight meanings, and whoever spoke last won. A "your changes aren't saving,
- * don't close this tab" warning was silently destroyed by "Claude updated status" on the
- * next three-second poll, and a successful background save wiped the "this document wants
- * to open <url>" confirmation out from under someone mid-decision.
+ * One slot, eight meanings. A single `sticky` boolean was not enough to say which of two
+ * notices matters more, and three separate failures came out of that:
  *
- * `sticky` marks the notices that must survive until they are answered or resolved: the
- * ones about losing work, and the ones asking a security question.
+ *   - Marking the agent-updated toast sticky let it destroy the `blocked` notice, which is
+ *     TERMINAL — the writer stops, so that notice never comes back and the only escape
+ *     hatch for the unsaved work is gone for good.
+ *   - Once every caller passed sticky, the `clean` branch's clearNotice() became dead, so
+ *     "your changes aren't saving" sat on screen after the save succeeded.
+ *   - The republish offer could be replaced and never re-offered, leaving the page running
+ *     the old app — the exact failure the composite ETag exists to prevent.
+ *
+ * So notices carry a TOPIC and a rank. A notice may only replace one of equal or lower
+ * rank, and a topic is only cleared by something that actually resolves it.
+ *
+ *   security (3) — a question about leaving the page or a frame that misbehaved
+ *   saving   (2) — the person's work is at risk
+ *   update   (1) — something changed that they may want to act on
  */
-function showNotice(text, actionLabel, onAction, accent, sticky) {
-	if (noticeSlot.dataset.sticky === "1" && !sticky) return null;
-	// The retry loop re-asserts the same warning on every attempt. Re-rendering it wiped
-	// anything added beside it — including the confirmation for the button it contains.
+const NOTICE_RANK = { security: 3, saving: 2, update: 1 };
+
+function showNotice(text, actionLabel, onAction, accent, topic = "update") {
+	const rank = NOTICE_RANK[topic] ?? 1;
 	const live = noticeSlot.firstElementChild;
-	if (live && live.dataset.text === text) return live;
+
+	if (live) {
+		const liveRank = NOTICE_RANK[live.dataset.topic] ?? 1;
+		if (rank < liveRank) return null;
+		// The retry loop re-asserts the same warning on every attempt. Rebuilding it wiped
+		// anything added beside it, including the confirmation for its own button.
+		if (live.dataset.text === text) return live;
+	}
+
 	noticeSlot.replaceChildren();
-	noticeSlot.dataset.sticky = sticky ? "1" : "";
 	const notice = el("div", accent ? "notice accent" : "notice");
 	notice.dataset.text = text;
+	notice.dataset.topic = topic;
 	notice.append(el("span", "grow", text));
 	if (actionLabel) {
 		const button = el("button", null, actionLabel);
@@ -122,11 +140,14 @@ function showNotice(text, actionLabel, onAction, accent, sticky) {
 	return notice;
 }
 
-const clearNotice = (force) => {
-	if (noticeSlot.dataset.sticky === "1" && !force) return;
-	noticeSlot.dataset.sticky = "";
+/** Clear only what the caller actually resolved. A successful save resolves "saving"; it
+ *  says nothing about a pending security question or an unanswered republish offer. */
+function clearNotice(topic) {
+	const live = noticeSlot.firstElementChild;
+	if (!live) return;
+	if (topic && live.dataset.topic !== topic) return;
 	noticeSlot.replaceChildren();
-};
+}
 
 // --------------------------------------------------------------------- API plumbing
 
@@ -199,7 +220,9 @@ const writer = new Writer({
 		switch (status.kind) {
 			case "clean":
 				setStatus(status.at ? `Saved ${timeOf(status.at)}` : "Saved", "clean");
-				clearNotice();
+				// Only the saving warning. A pending "open this URL?" question and an
+				// unanswered republish offer both outlive a successful save.
+				clearNotice("saving");
 				break;
 			case "dirty":
 				setStatus("Unsaved changes", "dirty");
@@ -217,13 +240,13 @@ const writer = new Writer({
 						"Copy my changes",
 						copyPending,
 						false,
-						true,
+						"saving",
 					);
 				}
 				break;
 			case "blocked":
 				setStatus("Not saved", "blocked");
-				showNotice(status.reason, "Copy my changes", copyPending, false, true);
+				showNotice(status.reason, "Copy my changes", copyPending, false, "saving");
 				break;
 			case "readonly":
 				setStatus("Read-only", "readonly");
@@ -262,6 +285,10 @@ async function copyPending() {
 	// the guard refused them and clicking "Copy my changes" produced NO feedback at all —
 	// in the one moment where silence reads as "the button is broken" and the person is
 	// deciding whether it is safe to close the tab.
+	// Captured BEFORE the await: a poll tick in that window can replace the slot, and the
+	// confirmation would land on whatever notice is there now.
+	const target = noticeSlot.firstElementChild;
+
 	let message;
 	try {
 		await navigator.clipboard.writeText(snapshot);
@@ -275,14 +302,13 @@ async function copyPending() {
 	// replacing that sentence with a cheerful one would be a lie by omission. Replacing
 	// the notice outright also lost the message a second later, because the retry loop
 	// re-asserts its own warning on every attempt.
-	const live = noticeSlot.firstElementChild;
-	if (!live) {
-		showNotice(message, null, null, true, true);
+	if (!target || !target.isConnected) {
+		showNotice(message, null, null, true, "saving");
 		return;
 	}
-	const existing = live.querySelector(".confirm");
+	const existing = target.querySelector(".confirm");
 	if (existing) existing.textContent = message;
-	else live.append(el("span", "confirm", message));
+	else target.append(el("span", "confirm", message));
 }
 
 let latestState = null;
@@ -313,7 +339,7 @@ frame.addEventListener("load", () => {
 			null,
 			null,
 			false,
-			true,
+			"security",
 		);
 		return;
 	}
@@ -439,10 +465,10 @@ function confirmOpen(raw) {
 		"Open in a new tab",
 		() => {
 			window.open(url.href, "_blank", "noopener,noreferrer");
-			clearNotice(true);
+			clearNotice("security");
 		},
 		false,
-		true,
+		"security",
 	);
 }
 
@@ -630,6 +656,8 @@ addEventListener("visibilitychange", () => {
 let polling = true;
 /** Event-id cursor, echoed from the server's next_since. Not the document version. */
 let cursor = 0;
+/** The republished content_version, held until the person accepts the reload. */
+let pendingContentVersion = null;
 
 async function poll() {
 	if (!polling) return;
@@ -645,7 +673,9 @@ async function poll() {
 		});
 
 		if (response.status === 304) return;
-		if (response.status === 401 || response.status === 404) {
+		// 403 matters here: a disabled tenant now answers 403 rather than 401, and without
+		// it a reader sat on a dead document polling silently every three seconds.
+		if (response.status === 401 || response.status === 403 || response.status === 404) {
 			polling = false;
 			terminal(
 				"This link is no longer active",
@@ -666,7 +696,10 @@ async function poll() {
 		if (typeof data.next_since === "number") cursor = data.next_since;
 
 		if (doc && data.content_version !== doc.content_version) {
-			doc.content_version = data.content_version;
+			// Re-offered on every poll until answered. showNotice is idempotent on the same
+			// text, so this rebuilds nothing while the offer stands, and it self-heals if a
+			// higher-ranked notice ever displaced it.
+			pendingContentVersion = data.content_version;
 			offerReload();
 		}
 
@@ -694,11 +727,16 @@ function offerReload() {
 		"Reload it",
 		() => {
 			if (writer.snapshot().pending) writer.flush("before reload");
-			clearNotice(true);
+			// Assimilate ONLY now. Taking the new content_version at poll time meant that
+			// if anything replaced this offer before the person answered it, the condition
+			// was false forever and the page kept running the old app.
+			if (pendingContentVersion !== null) doc.content_version = pendingContentVersion;
+			pendingContentVersion = null;
+			clearNotice("update");
 			attachFrame();
 		},
 		true,
-		true,
+		"update",
 	);
 }
 
@@ -716,9 +754,9 @@ function announceRemote(events) {
 	showNotice(
 		rest > 0 ? `Claude updated ${first} and ${rest} other field${rest > 1 ? "s" : ""}.` : `Claude updated ${first}.`,
 		"Dismiss",
-		() => clearNotice(true),
+		() => clearNotice("update"),
 		true,
-		true,
+		"update",
 	);
 }
 
@@ -729,7 +767,10 @@ const SANDBOX_ORIGIN = document.documentElement.dataset.sandboxOrigin ?? "";
 (async () => {
 	let response;
 	try {
-		response = await api("?since=0");
+		// events=0 so next_since comes back as the newest id rather than the 500th oldest.
+		// Seeding from a paged cursor meant a document with more than 500 events announced
+		// several pages of week-old edits as if they had just arrived.
+		response = await api("?since=0&events=0");
 	} catch {
 		terminal("Can't reach the server", "Check your connection and reload the page.");
 		return;

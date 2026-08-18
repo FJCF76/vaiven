@@ -278,15 +278,40 @@ export async function putState(
 	// was sending a document VERSION into the same field, so a receiver following the
 	// documented "echo next_since" pattern skipped or replayed events depending on which
 	// number happened to be larger.
-	const newestEvent =
-		db.query<{ id: number | null }, [string]>("SELECT max(id) AS id FROM events WHERE doc_id = ?").get(id)?.id ?? 0;
+	//
+	// The payload must also carry everything the cursor moves past. It carried `derived`
+	// (the edit events) while the same write also inserts annotations — the `Vaiven.log`
+	// records that arrive on exactly this path — so a receiver echoing the cursor skipped
+	// them: absent from the body and below the mark.
+	const delivered = db
+		.query<
+			{ id: number; version: number; actor: string; kind: string; field: string | null; from_value: string | null; to_value: string | null; op: string | null; item: string | null; note: string | null; payload: string | null; ts: number },
+			[string, number]
+		>(
+			`SELECT id, version, actor, kind, field, from_value, to_value, op, item, note, payload, ts
+			   FROM events WHERE doc_id = ? AND version = ? ORDER BY id`,
+		)
+		.all(id, result.version!);
 
 	queueWebhook(db, doc, {
 		doc_id: id,
 		version: result.version,
 		state: next,
-		events: derived,
-		next_since: newestEvent,
+		events: delivered.map((row) => ({
+			id: row.id,
+			version: row.version,
+			actor: row.actor,
+			kind: row.kind,
+			...(row.field ? { field: row.field } : {}),
+			...(row.from_value !== null ? { from: row.from_value } : {}),
+			...(row.to_value !== null ? { to: row.to_value } : {}),
+			...(row.op ? { op: row.op } : {}),
+			...(row.item ? { item: row.item } : {}),
+			...(row.note ? { note: row.note } : {}),
+			...(row.payload ? { payload: row.payload } : {}),
+			at: new Date(row.ts).toISOString(),
+		})),
+		next_since: delivered.length > 0 ? delivered[delivered.length - 1]!.id : 0,
 		untrusted: UNTRUSTED,
 	});
 
