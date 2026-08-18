@@ -140,10 +140,23 @@ then priority. Completed items move to the bottom.
 
 ## Documentation
 
-- **The README's test count is written by hand and has drifted three times.**
+- **The README's test count is written by hand and has drifted twice.**
   **Priority:** P3
   Every time tests are added it becomes a lie, and it is the kind of lie that makes a reader
   distrust the rest of the file. Generate it, drop the number, or assert it in a test.
+
+- **`upstream_error` (502) is declared and never thrown.**
+  **Priority:** P3
+  `src/errors.ts` defines it; nothing raises it. `guide/errors.md` correctly omits it, so the
+  documentation is right and the code carries a dead branch — but the two can drift apart
+  silently, which is the pattern this release spent its time on.
+
+- **The design doc describes an older authorization model than the code implements.**
+  **Priority:** P2
+  A13 in `docs/designs/vaiven-v1.md` names key mint/revoke, delete and `?force=1` as tenant
+  scope. `auth.ts` is narrower: a document key has exactly three capabilities — `doc.read`,
+  `state.write`, `events.append` — and everything else is tenant scope. guide.md,
+  guide/errors.md and the code now agree; the design doc does not.
 
 - **`gstack-version-bump` rewrites package.json with 2-space indentation.**
   **Priority:** P3
