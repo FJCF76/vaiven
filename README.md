@@ -54,8 +54,9 @@ and browsing by hand are unaffected.
 VAIVEN_PUBLIC_PORT=8080 bun run dev
 ```
 
-`bun start` runs the same server with no environment baked in, which is what the systemd unit
-uses.
+`bun run start` runs the same server with nothing baked in, so you supply the whole
+environment yourself. That is what production does, via an `EnvironmentFile` on the systemd
+unit.
 
 Mint yourself a tenant and a key. The CLI talks to the database directly, so it needs the
 same `VAIVEN_*` environment the server runs with:
