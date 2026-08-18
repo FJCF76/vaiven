@@ -1,0 +1,23 @@
+{
+	// A typecheck, deliberately separate from `bun build`.
+	//
+	// `bun build` transpiles and never checks types, so it reported success on a file that
+	// referenced an undefined constant — and that shipped as a 500 on every state write.
+	// `bun run typecheck` is the gate that catches that class.
+	"compilerOptions": {
+		"lib": ["ESNext", "DOM"],
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"types": ["bun"],
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"noUncheckedIndexedAccess": true,
+		"noFallthroughCasesInSwitch": true
+	},
+	"include": ["src/**/*.ts", "test/**/*.ts"],
+	"exclude": ["node_modules", "experiments"]
+}

@@ -38,6 +38,20 @@ LockPersonality=true
 RemoveIPC=true
 # A15's webhook is the only outbound path; everything else is loopback.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# The webhook validates its target at configuration time but DNS can change before
+# delivery, so the application-level guard has a rebinding window. This narrows it at the
+# platform layer, where a hostname cannot argue with the verdict.
+#
+# Two things verified on this box rather than assumed, because both fail silently:
+#   - `IPAddressAllow=any` DEFEATS every deny entry, including a /32. systemd resolves the
+#     verdict in favour of the allow, so adding it "for clarity" disables the whole filter.
+#     Measured: 169.254.169.254 reachable with it, unreachable without it. Deny-only is the
+#     working form, and unlisted addresses are permitted by default anyway.
+#   - Loopback is deliberately NOT denied. Caddy reaches this service over 127.0.0.1 and
+#     the stub resolver lives at 127.0.0.53, so denying it takes the site down and takes
+#     DNS with it. Loopback stays the application guard's job.
+IPAddressDeny=link-local multicast
+IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 # NOT ~@resources: Bun's allocator and JIT need mbind/set_mempolicy/sched_setaffinity

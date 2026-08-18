@@ -91,7 +91,7 @@ describe("arrays — the E2 regression", () => {
 		const events = deriveEvents(before, after);
 		expect(events.length).toBe(1);
 		expect(events[0]).toMatchObject({ field: "items", from: "12 items", to: "30 items" });
-		expect(events[0].item).toContain("rows changed");
+		expect(events[0]!.item).toContain("rows changed");
 	});
 
 	test("identity survives renaming the label field", () => {
@@ -111,8 +111,8 @@ describe("containment", () => {
 	test("long values are clamped", () => {
 		const long = "x".repeat(5000);
 		const events = deriveEvents({ a: "" }, { a: long });
-		expect(events[0].to!.length).toBeLessThanOrEqual(200);
-		expect(events[0].to!.endsWith("…")).toBe(true);
+		expect(events[0]!.to!.length).toBeLessThanOrEqual(200);
+		expect(events[0]!.to!.endsWith("…")).toBe(true);
 	});
 
 	test("clamp leaves short values untouched", () => {

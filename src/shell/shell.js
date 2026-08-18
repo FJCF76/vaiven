@@ -110,6 +110,8 @@ const api = (path, init = {}) =>
 	});
 
 let unloading = false;
+/** Deduped and capped: see the `error` case below. */
+const reportedErrors = new Set();
 let doc = null;
 let mode = "read";
 let frameReady = false;
@@ -289,20 +291,46 @@ addEventListener("message", (event) => {
 			writer.localChange(message.state);
 			break;
 
-		case "event":
+		case "event": {
+			// `Vaiven.log(kind, payload)`. The kind an app chooses is its own label, not one
+			// of the kinds a client may assert, so it travels as the note — but the payload
+			// used to be dropped here, which made `Vaiven.log("submitted", {total: 42})`
+			// record the word "submitted" and nothing else. The payload is the part the
+			// agent reads.
 			if (mode !== "write") return;
-			writer.localChange(latestState ?? {}, [{ kind: "note", note: String(message.kind ?? "") }]);
+			const label = String(message.kind ?? "").slice(0, 60);
+			const annotation = { kind: "note", note: label };
+			if (message.payload !== undefined && message.payload !== null) {
+				try {
+					annotation.payload = JSON.stringify(message.payload);
+				} catch {
+					annotation.payload = String(message.payload);
+				}
+			}
+			writer.localChange(latestState ?? {}, [annotation]);
 			break;
+		}
 
-		case "error":
+		case "error": {
 			// A12: the agent published JavaScript it cannot run. Without this the human
 			// sees a blank page and the agent learns nothing until somebody complains.
+			//
+			// But content is not obliged to use the helper: it can post this itself, in a
+			// loop, and each one was an authenticated write. That let a buggy or hostile
+			// document exhaust the person's own write budget and 429 their real edits,
+			// while writing attacker-chosen text into the log the agent reads.
+			if (mode !== "write") break;
+			if (typeof message.kind !== "string" || typeof message.detail !== "string") break;
+			const note = `${message.kind}: ${message.detail}`.slice(0, 200);
+			if (reportedErrors.has(note) || reportedErrors.size >= 10) break;
+			reportedErrors.add(note);
 			void api("/events", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ events: [{ kind: "error", note: `${message.kind}: ${message.detail}` }] }),
+				body: JSON.stringify({ events: [{ kind: "error", note }] }),
 			});
 			break;
+		}
 
 		case "open":
 			// A4: content cannot navigate anything itself. It asks, we show where, the
@@ -327,7 +355,11 @@ function confirmOpen(raw) {
 	}
 	if (url.protocol !== "https:" && url.protocol !== "mailto:") return;
 
-	const where = url.protocol === "mailto:" ? url.pathname : url.host;
+	// Show the whole URL. Showing only the host let content encode everything the person
+	// typed into the query string of a benign-looking domain: they approve "example.com"
+	// and open https://example.com/?s=<their answers>. With connect-src 'none' and popups
+	// denied, this is the last egress path, so it has to be legible.
+	const where = url.href.length > 120 ? `${url.href.slice(0, 119)}…` : url.href;
 	showNotice(`This document wants to open ${where}`, "Open in a new tab", () => {
 		window.open(url.href, "_blank", "noopener,noreferrer");
 		clearNotice();

@@ -272,14 +272,28 @@ export function threeWayMerge(base: unknown, ours: unknown, theirs: unknown): un
 	const baseObj = base as Record<string, unknown>;
 	const oursObj = ours as Record<string, unknown>;
 
+	const theirsObj = theirs as Record<string, unknown>;
+
 	for (const key of Object.keys(oursObj)) {
 		const changedByUs = JSON.stringify(oursObj[key]) !== JSON.stringify(baseObj[key]);
-		if (changedByUs) merged[key] = oursObj[key];
+		if (!changedByUs) continue;
+
+		// Recurse into nested objects instead of overwriting them whole. A flat assignment
+		// here loses every sibling field the other writer changed: we edit `contact.email`,
+		// they edit `contact.phone`, and their phone number disappears at the moment the
+		// merge is supposed to be saving it. Nesting is the normal shape for anything more
+		// structured than a form, so this was not an edge case.
+		if (isObject(baseObj[key]) && isObject(oursObj[key]) && isObject(theirsObj[key])) {
+			merged[key] = threeWayMerge(baseObj[key], oursObj[key], theirsObj[key]);
+			continue;
+		}
+
+		merged[key] = oursObj[key];
 	}
 
 	// A key we deleted and they did not touch stays deleted.
 	for (const key of Object.keys(baseObj)) {
-		if (!(key in oursObj) && JSON.stringify(baseObj[key]) === JSON.stringify((theirs as any)[key])) {
+		if (!(key in oursObj) && JSON.stringify(baseObj[key]) === JSON.stringify(theirsObj[key])) {
 			delete merged[key];
 		}
 	}

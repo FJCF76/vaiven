@@ -10,13 +10,13 @@
 
 import type { Database } from "bun:sqlite";
 import type { Config } from "../config.ts";
-import { hashKey } from "../auth.ts";
+import { hashKey, touchKeyById } from "../auth.ts";
 import { safeParse } from "../events.ts";
 import { baseHeaders } from "../headers.ts";
-import { RATES, enforceRate } from "../quota.ts";
+import { RATES, clientIp, enforceRate } from "../quota.ts";
 import { docUrls } from "../urls.ts";
 import { ApiError, errorResponse } from "../errors.ts";
-import { UNTRUSTED, readEvents, truthy } from "./api.ts";
+import { UNTRUSTED, mergeWarnings, readEvents, truthy } from "./api.ts";
 
 /**
  * A13: an unknown key and a revoked key must be indistinguishable, so the route is not an
@@ -61,9 +61,16 @@ export function readByKey(
 		const plaintext = keyWithSuffix.slice(0, -".json".length);
 		if (!plaintext) return opaqueMiss(config);
 
+		// Budget the probe, not just the hit. The per-document limiter below can only run
+		// once a key has resolved, so unknown keys were unlimited — a free SHA-256 and an
+		// indexed lookup per request, from anywhere, forever.
+		const ip = clientIp(request, config);
+		enforceRate(`a:${ip}`, RATES.anonymous, "requests");
+
 		const row = db
 			.query<
 				{
+					key_id: string;
 					doc_id: string;
 					role: string;
 					revoked_at: number | null;
@@ -73,13 +80,14 @@ export function readByKey(
 					state: string;
 					version: number;
 					warnings: string;
+					field_warnings: string;
 					content_version: number;
 				},
 				[string]
 			>(
-				`SELECT k.doc_id, k.role, k.revoked_at,
+				`SELECT k.id AS key_id, k.doc_id, k.role, k.revoked_at,
 				        t.disabled AS tenant_disabled,
-				        d.title, d.sender_note, d.state, d.version, d.warnings,
+				        d.title, d.sender_note, d.state, d.version, d.warnings, d.field_warnings,
 				        c.content_version
 				   FROM doc_keys k
 				   JOIN docs         d ON d.id = k.doc_id
@@ -98,9 +106,11 @@ export function readByKey(
 		if (row.role !== "read") return opaqueMiss(config);
 
 		enforceRate(`p:${row.doc_id}`, RATES.publicRead, "reads");
+		// Throttled to once a minute inside, and outside any transaction.
+		touchKeyById(db, row.key_id, ip);
 
 		const since = Number(url.searchParams.get("since") ?? -1);
-		const events = readEvents(db, row.doc_id, since, url.searchParams.get("events"));
+		const { events, nextSince } = readEvents(db, row.doc_id, since, url.searchParams.get("events"));
 
 		const body = {
 			doc_id: row.doc_id,
@@ -111,9 +121,10 @@ export function readByKey(
 			state: safeParse(row.state),
 			events,
 			// A8: one opaque cursor to echo back, rather than three integers to choose
-			// between. Passing the wrong one silently returns the wrong slice.
-			next_since: row.version,
-			warnings: safeParse(row.warnings),
+			// between. It is an event id, so annotations stored at an unchanged version are
+			// still reachable and a truncated page resumes rather than skipping.
+			next_since: nextSince,
+			warnings: mergeWarnings(row.warnings, row.field_warnings),
 			// A11: self-describing rather than a bare boolean, because this route is the
 			// one most likely to be read by something that never saw the guide.
 			untrusted: UNTRUSTED,

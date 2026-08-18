@@ -254,7 +254,29 @@ if (group === "doc" && action === "show") {
 if (group === "doc" && action === "delete") {
 	const id = positional(0) ?? die("vaiven doc delete <doc-id>");
 	if (!db.query("SELECT 1 FROM docs WHERE id = ?").get(id)) die(`No document ${id}.`);
-	writeTx(db, () => db.query("DELETE FROM docs WHERE id = ?").run(id));
+
+	// The cascade removes the rows; it cannot know about the tenant's byte counters. This
+	// path used to drop the row and leave the bytes charged forever, so a tenant that
+	// created and deleted documents would eventually be refused a write for space it was
+	// no longer using — and nothing reads the counters back to notice.
+	writeTx(db, () => {
+		const doc = db
+			.query<{ tenant_id: string; state_bytes: number }, [string]>(
+				"SELECT tenant_id, state_bytes FROM docs WHERE id = ?",
+			)
+			.get(id)!;
+		const contentBytes =
+			db.query<{ bytes: number }, [string]>("SELECT bytes FROM doc_content WHERE doc_id = ?").get(id)?.bytes ?? 0;
+		const versionBytes = db
+			.query<{ total: number }, [string]>("SELECT coalesce(sum(bytes), 0) AS total FROM state_versions WHERE doc_id = ?")
+			.get(id)!.total;
+
+		db.query("DELETE FROM docs WHERE id = ?").run(id);
+		db.query(
+			"UPDATE tenants SET used_bytes = max(0, used_bytes - ?), versions_bytes = max(0, versions_bytes - ?) WHERE id = ?",
+		).run(doc.state_bytes + contentBytes, versionBytes, doc.tenant_id);
+	});
+
 	console.log(`${id} deleted, with its keys, events and stored versions.`);
 	process.exit(0);
 }

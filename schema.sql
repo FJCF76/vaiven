@@ -42,9 +42,18 @@ CREATE TABLE IF NOT EXISTS docs (
   versions_bytes  INTEGER NOT NULL DEFAULT 0,
   -- A3: computed at write time and stored, not recomputed by parsing 1 MB of JSON on
   -- every read at 600 reads/min.
+  -- A3: what serving the CONTENT noticed (a stripped meta CSP, an added doctype).
   warnings        TEXT    NOT NULL DEFAULT '[]',
+  -- A3: what the STATE looks like — fields with no `name`, which automatic mode has to
+  -- key structurally. Kept apart because `warnings` is rewritten on every content serve.
+  field_warnings  TEXT    NOT NULL DEFAULT '[]',
   webhook_url     TEXT,                             -- A15
   webhook_secret  TEXT,
+  -- Idempotency. A network timeout AFTER the server committed would otherwise send the
+  -- client down the conflict path, where it re-sends its annotations and the person who
+  -- pressed "Done for now" is recorded as done twice.
+  last_request_id TEXT,
+  last_request_version INTEGER,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 );
@@ -92,6 +101,13 @@ CREATE TABLE IF NOT EXISTS state_versions (
   session INTEGER NOT NULL,
   PRIMARY KEY (doc_id, version)
 );
+
+-- Pruning reads (version, bytes, ts, session) for every stored version of one document,
+-- and `state` sits ahead of those columns in the record. A 1 MB state overflows onto
+-- overflow pages, so reaching the columns after it means walking them — on every write.
+-- Covering the prune with an index keeps it off the rows entirely.
+CREATE INDEX IF NOT EXISTS state_versions_prune
+  ON state_versions(doc_id, version, bytes, ts, session);
 
 CREATE TABLE IF NOT EXISTS events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,

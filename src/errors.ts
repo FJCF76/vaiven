@@ -49,7 +49,7 @@ const GUIDE_SECTION: Record<ErrorCode, string> = {
 	read_only: "errors",
 	disabled: "errors",
 	not_found: "errors",
-	conflict: "app-mode",
+	conflict: "errors",
 	precondition_required: "errors",
 	invalid: "errors",
 	too_large: "limits",

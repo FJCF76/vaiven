@@ -11,7 +11,6 @@ import type { Database } from "bun:sqlite";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-const CONNECT_TIMEOUT_MS = 5_000;
 const TOTAL_TIMEOUT_MS = 10_000;
 const ATTEMPTS = 3;
 
@@ -22,34 +21,121 @@ const inFlight = new Set<string>();
  * SSRF containment. The webhook URL is attacker-influenced in the sense that whoever can
  * create a document chooses it, and this process sits on a VPS with a metadata endpoint
  * and a loopback-bound database server.
+ *
+ * Parse to BYTES and test range membership. The first version matched textual prefixes,
+ * which let `fec0::` (site-local), `64:ff9b::` (NAT64, whose low 32 bits are an ordinary
+ * IPv4 address — including 127.0.0.1) and the expanded spelling `0:0:0:0:0:0:0:1` all pass
+ * as public, while blocking every `::ffff:` address outright including public ones.
  */
-function isForbiddenAddress(address: string): boolean {
-	if (isIP(address) === 6) {
-		const lower = address.toLowerCase();
-		return (
-			lower === "::1" ||
-			lower === "::" ||
-			lower.startsWith("fc") || // unique local
-			lower.startsWith("fd") ||
-			lower.startsWith("fe80") || // link local
-			lower.startsWith("::ffff:") // IPv4-mapped: check the mapped half separately
-		);
-	}
-
-	const parts = address.split(".").map(Number);
-	if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-	const [a, b] = parts;
-
+function ipv4Forbidden(a: number, b: number): boolean {
 	return (
-		a === 0 || // this network
+		a === 0 || // "this network"
 		a === 10 || // private
 		a === 127 || // loopback
 		(a === 169 && b === 254) || // link-local, including the 169.254.169.254 metadata endpoint
 		(a === 172 && b >= 16 && b <= 31) || // private
 		(a === 192 && b === 168) || // private
+		(a === 192 && b === 0) || // IETF protocol assignments + 192.0.2.0/24 documentation
+		(a === 198 && (b === 18 || b === 19)) || // benchmarking
+		(a === 198 && b === 51) || // documentation
+		(a === 203 && b === 0) || // documentation
 		(a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
-		a >= 224 // multicast and reserved
+		a >= 224 // multicast, reserved, broadcast
 	);
+}
+
+/** Expand an IPv6 address to its sixteen bytes, or null if it will not parse. */
+function ipv6Bytes(address: string): number[] | null {
+	let text = address.toLowerCase();
+	// A trailing dotted quad (::ffff:127.0.0.1, 64:ff9b::8.8.8.8) becomes two groups.
+	const dotted = text.match(/(\d+\.\d+\.\d+\.\d+)$/);
+	if (dotted) {
+		const quad = dotted[1]!.split(".").map(Number);
+		if (quad.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+		const hi = ((quad[0]! << 8) | quad[1]!).toString(16);
+		const lo = ((quad[2]! << 8) | quad[3]!).toString(16);
+		text = `${text.slice(0, -dotted[1]!.length)}${hi}:${lo}`;
+	}
+
+	const halves = text.split("::");
+	if (halves.length > 2) return null;
+	const head = halves[0] ? halves[0].split(":") : [];
+	const tail = halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : [];
+	const groups =
+		halves.length === 2
+			? [...head, ...Array(8 - head.length - tail.length).fill("0"), ...tail]
+			: head;
+	if (groups.length !== 8) return null;
+
+	const bytes: number[] = [];
+	for (const group of groups) {
+		if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+		const value = Number.parseInt(group, 16);
+		bytes.push(value >> 8, value & 0xff);
+	}
+	return bytes;
+}
+
+function isForbiddenAddress(address: string): boolean {
+	if (isIP(address) === 6) {
+		const bytes = ipv6Bytes(address);
+		if (!bytes) return true; // unparseable is not a reason to allow it
+
+		const isZero = bytes.every((byte) => byte === 0);
+		const isLoopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
+		if (isZero || isLoopback) return true;
+
+		// Anything carrying an embedded IPv4 address is judged on that address: ::ffff:a.b.c.d
+		// (v4-mapped) and 64:ff9b::a.b.c.d (NAT64) both reach the v4 host they name.
+		const v4Mapped =
+			bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+		const nat64 =
+			bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b;
+		if (v4Mapped || nat64) return ipv4Forbidden(bytes[12]!, bytes[13]!);
+
+		return (
+			(bytes[0]! & 0xfe) === 0xfc || // fc00::/7 unique local
+			(bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0x80) || // fe80::/10 link local
+			(bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0xc0) || // fec0::/10 site local (deprecated, still routed)
+			bytes[0] === 0xff || // multicast
+			(bytes[0] === 0x20 && bytes[1] === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) // 2001:db8::/32 documentation
+		);
+	}
+
+	const parts = address.split(".").map(Number);
+	if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+	return ipv4Forbidden(parts[0]!, parts[1]!);
+}
+
+/**
+ * Resolve a hostname and refuse it if ANY answer is non-public.
+ *
+ * Returned so the delivery path can repeat the check rather than trusting a verdict
+ * reached when the webhook was configured — see the note on queueWebhook.
+ */
+async function resolvesPublicly(hostname: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+	// A bare literal never goes to DNS, so check it directly.
+	if (isIP(hostname) !== 0) {
+		return isForbiddenAddress(hostname)
+			? { ok: false, reason: "That address is private, loopback or link-local. Webhooks may only reach the public internet." }
+			: { ok: true };
+	}
+
+	try {
+		const resolved = await lookup(hostname, { all: true });
+		if (resolved.length === 0) return { ok: false, reason: "That hostname does not resolve." };
+		for (const { address } of resolved) {
+			if (isForbiddenAddress(address)) {
+				return {
+					ok: false,
+					reason: "That hostname resolves to a private or link-local address. Webhooks may only reach the public internet.",
+				};
+			}
+		}
+	} catch {
+		return { ok: false, reason: "That hostname does not resolve." };
+	}
+	return { ok: true };
 }
 
 export async function validateWebhookUrl(raw: string): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -64,22 +150,7 @@ export async function validateWebhookUrl(raw: string): Promise<{ ok: true } | { 
 		return { ok: false, reason: "Webhooks must be https. Plaintext would put the document's contents on the wire." };
 	}
 
-	try {
-		const resolved = await lookup(url.hostname, { all: true });
-		if (resolved.length === 0) return { ok: false, reason: "That hostname does not resolve." };
-		for (const { address } of resolved) {
-			if (isForbiddenAddress(address)) {
-				return {
-					ok: false,
-					reason: "That hostname resolves to a private or link-local address. Webhooks may only reach the public internet.",
-				};
-			}
-		}
-	} catch {
-		return { ok: false, reason: "That hostname does not resolve." };
-	}
-
-	return { ok: true };
+	return await resolvesPublicly(url.hostname);
 }
 
 /**
@@ -98,6 +169,20 @@ export function queueWebhook(
 	inFlight.add(doc.id);
 
 	void (async () => {
+		// Re-check at DELIVERY time, not only at configuration time. The stored verdict was
+		// reached against whatever DNS answered then; a record with a short TTL can answer
+		// public once and 127.0.0.1 or 169.254.169.254 for every call after. The window
+		// cannot be closed completely without pinning the connection to the vetted address,
+		// which Bun's fetch gives no seam for, but re-resolving here shrinks it from days to
+		// milliseconds and defeats the ordinary rebinding case.
+		const target = new URL(doc.webhook_url!);
+		const verdict = await resolvesPublicly(target.hostname);
+		if (!verdict.ok) {
+			recordFailure(db, doc.id, `refused: ${verdict.reason}`);
+			inFlight.delete(doc.id);
+			return;
+		}
+
 		const body = JSON.stringify(payload);
 		// Authenticity: without a signature the webhook URL is an unauthenticated push
 		// that anyone who learns it can forge.
@@ -136,20 +221,24 @@ export function queueWebhook(
 			}
 		}
 
-		try {
-			const version = db
-				.query<{ version: number }, [string]>("SELECT version FROM docs WHERE id = ?")
-				.get(doc.id)?.version;
-			if (version !== undefined) {
-				db.query(
-					"INSERT INTO events (doc_id, version, actor, kind, note, ts) VALUES (?, ?, 'vaiven', 'webhook_failed', ?, ?)",
-				).run(doc.id, version, `${ATTEMPTS} attempts failed: ${lastError}`.slice(0, 200), Date.now());
-			}
-		} catch {
-			// Recording the failure must not itself become a failure.
-		}
+		recordFailure(db, doc.id, `${ATTEMPTS} attempts failed: ${lastError}`);
 		inFlight.delete(doc.id);
 	})();
 }
 
-export { CONNECT_TIMEOUT_MS };
+/** A dead endpoint should be visible in the log the agent already reads. */
+function recordFailure(db: Database, docId: string, note: string): void {
+	try {
+		const version = db
+			.query<{ version: number }, [string]>("SELECT version FROM docs WHERE id = ?")
+			.get(docId)?.version;
+		if (version === undefined) return;
+		db.query(
+			"INSERT INTO events (doc_id, version, actor, kind, note, ts) VALUES (?, ?, 'vaiven', 'webhook_failed', ?, ?)",
+		).run(docId, version, note.slice(0, 200), Date.now());
+	} catch {
+		// Recording the failure must not itself become a failure.
+	}
+}
+
+export { isForbiddenAddress };
