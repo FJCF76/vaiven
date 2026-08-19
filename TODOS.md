@@ -270,6 +270,16 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   it would miss CSS injected by script — which is why it was not done first.
   **Priority:** P3
 
+- **There is no `vaiven tenant disable` or `tenant enable` verb.** The schema has the
+  `disabled` column, `resolveWithReason` honours it, and `test/negatives.ts` proves a disabled
+  tenant's document keys stop working — but nothing in the CLI can set it. `tenant set` covers
+  only `max-docs`, `max-bytes` and `read-keys`. A13 in `docs/designs/vaiven-v1.md` listed
+  `tenant enable` among the CLI gaps and it was never filled.
+
+  Found while cleaning up after a QA run that had minted two throwaway tenants and could not
+  turn them off. Pre-existing, not from this release.
+  **Priority:** P3
+
 ## Shell
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
