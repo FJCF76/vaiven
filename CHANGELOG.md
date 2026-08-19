@@ -2,6 +2,94 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.0.0] - 2026-08-20
+
+A third-party agent built two documents against this instance and wrote up what broke. Most
+of what follows is not what it reported. It is what the reviews found while fixing what it
+reported.
+
+### Fixed
+
+- **A minted key came back with no URL, so an agent built one and a person got a dead link.**
+  `POST /api/docs/<id>/keys` answered with `{id, label, role, key}`. The agent needed a link
+  to send someone, wrote `#<key>` instead of `#k=<key>`, and sent it. The response now carries
+  the URLs the key can open: `view_url` for both roles, and `read_url` too for a read key,
+  which really does answer at `/r/`. A write key deliberately gets no `read_url` — it is not
+  a read key and that URL would 404.
+
+  `src/urls.ts` has said *"never make the agent construct a URL"* at the top since the first
+  release, and that did not stop three instances of exactly this. Review found a fourth, in
+  the CLI. So the rule is now the type system: minted secrets are a `KeyMaterial` with a `#`
+  private field, `tsc` rejects putting one where a string belongs, and if one ever does reach
+  a response body `toJSON` emits `"[redacted]"` rather than the key.
+
+- **An unauthenticated request could stall the whole instance for about two and a half
+  minutes.** Content is scanned when it is published and when it is served, and the scan was
+  quadratic on unterminated `<style>` tags: 200,000 of them is 1.4 MB, inside the 4 MB cap,
+  and took 148 seconds. `GET /c/<id>` needs no credential and the process is single threaded,
+  so that is not a slow read for one person, it is downtime for every tenant, repeatable.
+  Measured after the fix on the same payload: **7 ms**.
+
+  Two earlier versions of that scan were also quadratic, on two other shapes. All three shapes
+  are now regression tests.
+
+- **`vaiven key add --role admin` silently minted a WRITE key.** Any unrecognised role fell
+  through to write. The HTTP route rejected it properly; the CLI, which is how an operator
+  hands a real person a link, failed open toward more privilege.
+
+- **The consent notice named a sender who often does not exist.** It said edits were "shared
+  with whoever sent you this link". The first person to actually use this system opened their
+  own document and answered: *nobody sent me a link.* Every clause now holds for a stranger
+  with a write link, a stranger with a read link, and the author opening their own document.
+  It also stopped claiming that nothing a read-only viewer does is recorded, which was never
+  true: opening a read link records a time and a coarse address, so a leaked link is
+  observable at all.
+
+### Added
+
+- **The server now tells you when your page will render badly**, in `warnings`, at publish
+  time. Two things an author cannot see for themselves: a dark-mode block that never paints a
+  background, which ships light text on a white canvas; and viewport units, `position: fixed`
+  or `position: sticky`, in a frame that has no viewport and is grown to your content instead.
+  `100vh` there is circular and runs away until it is clamped.
+
+  These were going to be sentences in the manual. The manual is fetched once, before any HTML
+  is written, and these bugs are found by the person who opens the document — who has no way
+  to tell you. A warning arrives where the agent is already looking.
+
+- **`Vaiven.note(text, payload)`**, the honest name for `Vaiven.log(kind, payload)`, whose
+  first argument was never a kind: it travelled as note text and the event always read back as
+  `kind: "note"`, so filtering on what you passed never matched. `log()` is kept and works
+  forever — published `content` is served as written and never rebuilt, so every document
+  already calling it must keep working.
+
+- **`warnings` on the create and publish responses.** The manual promised the server tells you
+  at publish time. It did not; warnings only appeared on a later read, so an agent that
+  published and saw a clean response concluded it was clean.
+
+### Removed
+
+- **"Done for now".** It appended `{kind:"done"}` to the log and nothing else: nothing reads
+  that kind, and the route it called never fires a webhook, so pressing it notified nobody. It
+  also disabled itself permanently, so the person who pressed it and kept typing could not
+  mark a second checkpoint. `kind: "done"` is still accepted by the API and old histories are
+  unaffected.
+
+  The idea survives. An intent note is the one thing auto-diff cannot recover, since "added
+  extra budget" and "cut 6000 to 900, added a 5000 line" describe the same edit. It comes back
+  wired to the webhook, so it actually notifies.
+
+### Documentation
+
+- `guide.md` now says the canvas is white in every theme, that the frame has no viewport, that
+  `Vaiven.state` is null until the document loads, and that `read_key: true` is what creates
+  `read_url` — without which section 3, the read-back loop this product exists for, silently
+  does not work. It also carries a read-write-merge example using `version`, which is the
+  value every response actually returns.
+- **Never tell the person to use a control in the shell.** A real document was found
+  instructing its reader to press Done for now, twice, after that button was gone. Content is
+  served as written and never rebuilt; the chrome around it is ours and it changes.
+
 ## [0.2.5.1] - 2026-08-19
 
 Documentation catch-up for 0.2.5.0.
