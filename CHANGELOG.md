@@ -2,6 +2,27 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.0.1] - 2026-08-20
+
+Documentation catch-up for 0.3.0.0, and one gap that release created.
+
+### Added
+
+- **The warning vocabulary is documented, in `guide/errors.md`.** 0.3.0.0 started emitting
+  `dark_mode_no_background` and `no_viewport` on every read, and named neither anywhere an
+  agent could look. The manual says to branch on `code` rather than on the message, which is
+  only possible if the codes are written down. All five are now listed, including the three
+  that predate this release and had never been documented either.
+
+### Fixed
+
+- **`README.md` said the CLI has `enable` and `disable` verbs.** It does not, and never has —
+  the schema has the `disabled` column and the resolver honours it, but nothing in the CLI can
+  set it. The README now describes what is actually there; the missing verbs stay recorded in
+  `TODOS.md`.
+- The unit-test count said 235 against a 270-test suite, and the docs table was missing
+  `docs/designs/agent-contract.md`.
+
 ## [0.3.0.0] - 2026-08-20
 
 A third-party agent built two documents against this instance and wrote up what broke. Most

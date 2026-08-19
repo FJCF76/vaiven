@@ -71,8 +71,8 @@ bun run cli tenant create "Your Name"
 The key is printed once and stored hashed. The command also prints a one-line installer that
 fetches `/guide.md` into `~/.claude/skills/vaiven/SKILL.md` and writes the host and key
 alongside it as `config.json`, so an agent can pick the whole thing up with no further setup.
-`bun run cli` with no arguments lists every command: tenant creation, quotas, enable, disable
-and key rotation; per-document keys with labels, roles and revocation; and document listing,
+`bun run cli` with no arguments lists every command: tenant creation, listing, quotas and key
+rotation; per-document keys with labels, roles and revocation; and document listing,
 inspection and deletion.
 
 Administration is deliberately a CLI and not an API: everything here either mints credentials
@@ -82,7 +82,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 235 unit tests, no server needed
+bun test          # 270 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
@@ -175,6 +175,7 @@ open it, and in a shell an unset variable silently expands to nothing.
 | [`guide/limits.md`](guide/limits.md) | Size limits, quotas and rate limits. |
 | [`docs/designs/vaiven-v1.md`](docs/designs/vaiven-v1.md) | The reviewed design doc: why it is built this way, and the amendments layered on the spec. |
 | [`docs/designs/well-formed-urls.md`](docs/designs/well-formed-urls.md) | Why the manual stores real URLs rather than a placeholder, and how the serve-time rewrite works. |
+| [`docs/designs/agent-contract.md`](docs/designs/agent-contract.md) | Why a minted key now carries its own URLs, and why the rule is enforced by the type system rather than by a comment. |
 | [`docs/designs/agent-onboarding.md`](docs/designs/agent-onboarding.md) | Why the error hints stopped naming a CLI, and what a keyless agent is told instead. |
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, per version. |
 | [`TODOS.md`](TODOS.md) | What is known to be missing, with priorities. |

@@ -32,6 +32,24 @@ Merge and retry. Do not treat it as a failure.
 **`read_only` usually means you have the wrong key, not a broken one.** A document has a
 write key and, optionally, a read key. The read key is the one that goes in a URL.
 
+## Warnings
+
+`warnings` rides every read, and now the create and publish responses too. It is the server
+telling you it had to alter what you published, or that your page will not render the way you
+wrote it. An empty array means what it says. Branch on `code`, not on the message.
+
+| Code | What happened |
+|---|---|
+| `added_doctype` | Your content did not start with `<!doctype html>`, so one was added. Without it the browser renders in quirks mode and your layout silently differs from what you wrote. |
+| `stripped_meta_csp` | A `<meta http-equiv="Content-Security-Policy">` was removed. Policies compose as a union, so yours could only further restrict the page, including disabling the helper. |
+| `stripped_base` | A `<base>` tag was removed. It changes how every relative URL resolves, including the helper's. |
+| `dark_mode_no_background` | You have a `prefers-color-scheme: dark` block that never paints a background on `html`, `body` or `:root`. The frame is white in every theme and cannot read the viewer's, so dark rules that only set `color` produce light text on a white page. |
+| `no_viewport` | Your CSS uses viewport height units, `position: fixed` or `position: sticky`. The frame is sized to your content, so there is no viewport that scrolls: `100vh` is circular and runs away until it is clamped. |
+
+The last two are the ones you cannot check for yourself. You never see your page render; the
+first person who does is the one you sent it to, and they have no way to tell you it was
+unreadable. That is what these are for.
+
 ## Recovering a lost read URL
 
 Read keys are stored hashed and shown once. If you lose one, mint another and revoke the
