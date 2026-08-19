@@ -653,7 +653,7 @@ export async function postKey(
 	requireCap(scope, "keys.mint", id);
 	// Every other write route budgets itself; this one did not, and each response is now three
 	// times as key-bearing as it was.
-	enforceRate(`w:${scope.tenantId}`, RATES.write, "writes");
+	enforceRate(scope.kind === "tenant" ? `w:${scope.tenantId}` : `w:${scope.keyId}`, RATES.write, "writes");
 	loadDoc(db, scope, id);
 	const body = await readJson(request, 8192, "request");
 

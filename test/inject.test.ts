@@ -148,6 +148,22 @@ describe("canvas detection is precise about which selector paints", () => {
 			);
 			expect(performance.now() - started).toBeLessThan(2000);
 		}
+
+		// The THIRD quadratic, and the one that mattered most: a lazy regex extracting <style>
+		// bodies rescans to end-of-document for every unterminated opener. Measured before the
+		// fix: 9.7s at 50k tags, 148s at 200k — inside the content cap, on the unauthenticated
+		// serve path. These shapes never touch a regex now.
+		const documentShapes = [
+			"<style>".repeat(600_000), // unterminated openers
+			`<div style="${"a".repeat(2_000_000)}>x</div>`, // unterminated attribute quote
+			"<style>a{color:red}</style>".repeat(100_000), // many well-formed blocks
+			`<img src="data:image/png;base64,${"A".repeat(4 * 1024 * 1024)}">`, // a big asset
+		];
+		for (const payload of documentShapes) {
+			const started = performance.now();
+			await prepareContent(`<!doctype html><html><head></head><body>${payload}</body></html>`, "/*h*/");
+			expect(performance.now() - started).toBeLessThan(2000);
+		}
 	});
 
 	test("a document full of base64 data: URIs is not told it uses viewport units", async () => {
