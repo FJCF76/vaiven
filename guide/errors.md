@@ -35,12 +35,22 @@ write key and, optionally, a read key. The read key is the one that goes in a UR
 ## Recovering a lost read URL
 
 Read keys are stored hashed and shown once. If you lose one, mint another and revoke the
-old one — do not leave both live:
+old one — do not leave both live. **The mint response hands you the URL already built**;
+this is the page an agent reached before it built one by hand and sent a person a dead link:
 
 ```bash
 curl -s -X POST "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/keys" -H "Authorization: Bearer YOUR_TENANT_KEY" \
   -H 'content-type: application/json' -d '{"label":"reader","role":"read"}'
 curl -s -X DELETE "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/keys/k_YOUR_KEY_ID" -H "Authorization: Bearer YOUR_TENANT_KEY"
+```
+
+The mint answers with the key and every URL that key can open:
+
+```json
+{ "id": "k_...", "label": "reader", "role": "read",
+  "key": "...",
+  "view_url": "https://vaiven.owncompute.com/d/d_YOUR_DOCUMENT_ID#k=...",
+  "read_url": "https://vaiven.owncompute.com/r/....json" }
 ```
 
 ## Recovering from a bad write

@@ -15,12 +15,57 @@ import { newKeyId } from "./ids.ts";
 
 // ------------------------------------------------------------------------- key material
 
+/**
+ * A key that the type system will not let you serialize by accident.
+ *
+ * Three times in three releases the same defect shipped: a response mentioned a key and the
+ * caller had to build the URL for it by hand. Twice an agent absorbed it; the third time a
+ * person received a dead link. The invariant was written at the top of `urls.ts` before any
+ * of them, and being written did not help.
+ *
+ * A source scan was considered and rejected — `const { plaintext } = ...` walks straight
+ * through one, and the guard is defeated by renaming a variable.
+ *
+ * What this actually guarantees, stated precisely, because the first draft of this comment
+ * overclaimed: `KeyMaterial` is not assignable to `string`, so `tsc --noEmit` (already in CI)
+ * rejects every attempt to put one where a string is expected. It does NOT reject passing an
+ * object containing one to a parameter typed `unknown` — `json(body: unknown)` accepts
+ * anything. That residual path is what `toJSON` is for: a key that slips through serializes
+ * as `"[redacted]"` rather than as itself. Type first, redaction as the backstop.
+ */
+export class KeyMaterial {
+	// A `#` field, NOT TypeScript's `private`. That distinction is the whole protection:
+	// `private` is erased at compile time, so the first version of this class leaked the
+	// secret through `{ ...material }`, `Object.assign({}, material)` and a bare
+	// `console.log(material)`, all of which copy or print enumerable own properties. A `#`
+	// field is invisible to every one of those.
+	readonly #value: string;
+
+	constructor(value: string) {
+		this.#value = value;
+	}
+
+	/** The only way to the plaintext. Call it where a URL or a response body is being built,
+	 *  and nowhere else — every call site is a place to look during review. */
+	reveal(): string {
+		return this.#value;
+	}
+
+	toJSON(): string {
+		return "[redacted]";
+	}
+
+	toString(): string {
+		return "[redacted]";
+	}
+}
+
 /** 32 random bytes, base64url. The plaintext exists only in the minting response. */
-export function mintKey(): { plaintext: string; hash: string } {
+export function mintKey(): { plaintext: KeyMaterial; hash: string } {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
 	const plaintext = Buffer.from(bytes).toString("base64url");
-	return { plaintext, hash: hashKey(plaintext) };
+	return { plaintext: new KeyMaterial(plaintext), hash: hashKey(plaintext) };
 }
 
 export function hashKey(plaintext: string): string {
@@ -259,7 +304,7 @@ export function insertDocKey(
 	docId: string,
 	label: string,
 	role: "read" | "write",
-): { id: string; plaintext: string; label: string; role: "read" | "write" } {
+): { id: string; plaintext: KeyMaterial; label: string; role: "read" | "write" } {
 	const { plaintext, hash } = mintKey();
 	const id = newKeyId();
 	db.query(

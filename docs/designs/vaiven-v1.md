@@ -435,6 +435,9 @@ by none.
   updated **price** and 2 other fields," with a brief field highlight. This is the strongest
   moment in the product and it did not exist.
 - **"Done for now"** flushes, emits `{kind:'done', payload:{note?}}`, and shows "Sent."
+  **SUPERSEDED 2026-08-19 — the button was removed.** It notified nobody: nothing reads that
+  kind and `POST /events` queues no webhook. See `docs/designs/agent-contract.md`. The event
+  kind is still accepted; the control is gone until it is wired to the webhook.
   The read-back was specified end to end at the data layer with **no human-facing trigger**;
   the person filled in the document and nothing happened. This also produces the only event
   in the log with actual stated intent, which is what premise 1 claims to sell. Free at the

@@ -62,7 +62,7 @@ export async function apiRoutes(
 					if (method === "POST") return await postEvents(db, request, scope, id);
 					return methodNotAllowedWith(config, "POST");
 				case "keys":
-					if (method === "POST") return await postKey(db, request, scope, id);
+					if (method === "POST") return await postKey(db, request, config, scope, id);
 					return methodNotAllowedWith(config, "POST");
 				case "webhook":
 					if (method === "PUT") return await setWebhook(db, request, scope, id);

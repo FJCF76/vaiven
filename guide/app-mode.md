@@ -87,15 +87,23 @@ fixed with one `PUT /state`, not with migration machinery.
 row is told apart from a new one, so the log can say `items[Extra budget].cost: 0 → 5000`
 instead of a meaningless index.
 
-**`Vaiven.log(kind, payload)`** appends a note. Your `kind` travels as the note *text* and
-the event reads back with kind `note`, so filter on the text or the payload rather than on
-the string you passed. It does not change state, but it does bump the version.
+**`Vaiven.note(text, payload)`** appends a note to the log. `text` is what you want to read
+back later; `payload` is anything structured you want alongside it. It does not change state,
+but it does go through the same write as a state change, so it bumps the version. (The API
+route `POST /api/docs/<id>/events` is the one that does not — that is the one to use from
+your side, not from inside the page.)
+
+`Vaiven.log(kind, payload)` is the old name and still works — documents published before the
+rename keep calling it, and `content` is served as it was written, never rebuilt. Its first
+argument was never a kind: it travelled as the note text and the event always read back as
+`kind: "note"`. That is why `note` exists. Use it.
+
 **`Vaiven.readonly`** is true when the viewer holds a read key — hide your controls.
 
 ## What the person sees around your app
 
 A bar you do not control and cannot suppress: the title, the name their edits are recorded
-under, save status, a **Done for now** button, and a panel showing them their own event log.
+under, save status, and a panel showing them their own event log.
 That bar is where they are told their edits are being recorded, because in automatic mode
 you never know it is happening — so you cannot be the one to tell them.
 

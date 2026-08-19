@@ -8,6 +8,7 @@ import { migrate, open } from "./db.ts";
 import { hashKey, insertDocKey, mintKey } from "./auth.ts";
 import { newTenantId } from "./ids.ts";
 import { writeTx } from "./db.ts";
+import { mintedKeyBody } from "./urls.ts";
 
 const config = loadConfig();
 const db = open(config.db);
@@ -52,7 +53,8 @@ const usage = `vaiven — administration
 
 if (group === "tenant" && action === "create") {
 	const name = positional(0) ?? die("A tenant needs a name: vaiven tenant create \"Fernando\"");
-	const { plaintext, hash } = mintKey();
+	const { plaintext: keyMaterial, hash } = mintKey();
+	const plaintext = keyMaterial.reveal();
 	const id = newTenantId();
 
 	writeTx(db, () =>
@@ -159,7 +161,8 @@ if (group === "tenant" && action === "set") {
 // themselves out of their own tenant permanently.
 if (group === "tenant" && action === "rotate-key") {
 	const id = positional(0) ?? die("vaiven tenant rotate-key <tenant-id>");
-	const { plaintext, hash } = mintKey();
+	const { plaintext: keyMaterial, hash } = mintKey();
+	const plaintext = keyMaterial.reveal();
 	const changes = writeTx(db, () => db.query("UPDATE tenants SET key_hash = ? WHERE id = ?").run(hash, id).changes);
 	if (changes === 0) die(`No tenant ${id}.`);
 	console.log(`\n  new key  ${plaintext}\n\nThe previous key stopped working just now. Document keys are unaffected.\n`);
@@ -171,15 +174,25 @@ if (group === "tenant" && action === "rotate-key") {
 if (group === "key" && action === "add") {
 	const docId = positional(0) ?? die("vaiven key add <doc-id> --label \"Marta\" [--role write]");
 	const label = flag("label") ?? die("A key needs a label — it becomes the actor on everything written with it.");
-	const role = (flag("role", "write") === "read" ? "read" : "write") as "read" | "write";
+	// This used to be `=== "read" ? "read" : "write"`, so `--role reader`, `--role r` and
+	// `--role admin` all silently minted a WRITE key. The HTTP route rejects a bad role with a
+	// 400; the CLI is how an operator hands a real person a link, and it failed open toward
+	// MORE privilege.
+	const requestedRole = flag("role", "write");
+	if (requestedRole !== "read" && requestedRole !== "write") {
+		die(`Unknown role ${JSON.stringify(requestedRole)}. Use --role read or --role write.`);
+	}
+	const role = requestedRole as "read" | "write";
 	if (!db.query("SELECT 1 FROM docs WHERE id = ?").get(docId)) die(`No document ${docId}.`);
 
 	const minted = writeTx(db, () => insertDocKey(db, docId, label, role));
-	const url =
-		role === "write"
-			? `${config.appOrigin}/d/${docId}#k=${minted.plaintext}`
-			: `${config.appOrigin}/r/${minted.plaintext}.json`;
-	console.log(`\n  ${minted.id}  ${role}  ${label}\n\n  ${url}\n\nShown once.\n`);
+	// This hand-built the fragment WITHOUT encodeURIComponent, diverging from urls.ts — a
+	// fourth instance of the defect this release exists to end, found in review. The CLI is
+	// how an operator hands someone a link, so it goes through the same serializer as the API.
+	const body = mintedKeyBody(config, docId, minted);
+	const url = body.view_url ?? body.read_url;
+	const also = role === "read" ? `\n  read-back  ${body.read_url}` : "";
+	console.log(`\n  ${minted.id}  ${role}  ${label}\n\n  ${url}${also}\n\nShown once.\n`);
 	process.exit(0);
 }
 

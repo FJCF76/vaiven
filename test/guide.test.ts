@@ -45,11 +45,27 @@ const literal = block.slice(0, block.indexOf("\n\t};"));
 const surface = [...literal.matchAll(/^\t\t(?:get )?(\w+)\s*[({]/gm)].map((m) => m[1]!);
 
 describe("the documented app-mode API matches the real one", () => {
-	test("the helper exposes exactly what we think it does", () => {
-		expect(new Set(surface)).toEqual(new Set(["state", "readonly", "render", "mutate", "log"]));
+	// The manual's promise is that one fetch is enough. "Two screens" was an intention with
+	// nothing enforcing it, and every cycle adds. Pinned at what this release lands at, so the
+	// next addition has to argue for itself or delete something.
+	test("guide.md stays within one fetch", () => {
+		expect(guide.split("\n").length).toBeLessThan(430);
 	});
 
-	for (const member of ["render", "mutate", "log", "state", "readonly"]) {
+	test("the helper exposes exactly what we think it does", () => {
+		expect(new Set(surface)).toEqual(new Set(["state", "readonly", "render", "mutate", "note", "log"]));
+	});
+
+	// `log` must EXIST forever (published documents call it) but must NOT be taught as the
+	// primary name. Splitting the two lists is the point: without this, the next person to
+	// see the documentation guard fail restores `log` to the manual and undoes the fix.
+	const ALIASES = new Set(["log"]);
+
+	test("aliases exist in the helper but are not taught as primary", () => {
+		for (const alias of ALIASES) expect(surface).toContain(alias);
+	});
+
+	for (const member of ["render", "mutate", "note", "state", "readonly"]) {
 		test(`guide.md documents Vaiven.${member}`, () => {
 			expect(guide).toContain(`Vaiven.${member}`);
 		});

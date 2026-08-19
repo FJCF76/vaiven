@@ -58,7 +58,17 @@ export function readByKey(
 		// `/r/<key>.json` — the extension is there so that a browser, an editor and a
 		// content-type sniffer all agree about what this is.
 		if (!keyWithSuffix.endsWith(".json")) return opaqueMiss(config);
-		const plaintext = keyWithSuffix.slice(0, -".json".length);
+		// `urls.ts` percent-encodes this segment when it builds `read_url`, so it is decoded
+		// back here before hashing. Encoding on one side only would mean a key containing an
+		// escaped character never resolves — invisible today, since the alphabet is base64url
+		// and a test pins that, but the two sides have to agree regardless.
+		let plaintext: string;
+		try {
+			plaintext = decodeURIComponent(keyWithSuffix.slice(0, -".json".length));
+		} catch {
+			// A malformed percent-escape is not a key. Same opaque answer as any other miss.
+			return opaqueMiss(config);
+		}
 		if (!plaintext) return opaqueMiss(config);
 
 		// Budget the probe, not just the hit. The per-document limiter below can only run

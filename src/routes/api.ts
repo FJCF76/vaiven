@@ -5,7 +5,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { Config } from "../config.ts";
-import { bearerFrom, can, insertDocKey, resolveWithReason, touchKey, type Capability, type Scope } from "../auth.ts";
+import { bearerFrom, can, insertDocKey, resolveWithReason, touchKey, type Capability, type KeyMaterial, type Scope } from "../auth.ts";
 import { byteLength, writeTx } from "../db.ts";
 import { fieldWarnings, safeParse, stampVids, clamp } from "../events.ts";
 import { prepareContent } from "../inject.ts";
@@ -321,7 +321,7 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 			scope.tenantId,
 		);
 
-		const minted: Array<{ id: string; label: string; role: string; key: string }> = [];
+		const minted: Array<{ id: string; label: string; role: string; key: KeyMaterial }> = [];
 		const editor = insertDocKey(db, id, requireWithin(body.editor_label ?? "editor", LIMITS.labelChars, "editor_label", "key label"), "write");
 		minted.push({ id: editor.id, label: editor.label, role: editor.role, key: editor.plaintext });
 		if (wantsRead) {
@@ -347,19 +347,23 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 	}
 
 	const keys = outcome.keys;
-	const write = keys.find((k) => k.role === "write")?.key;
+	const shell = keys.find((k) => k.role === "write")?.key;
 	const read = keys.find((k) => k.role === "read")?.key;
 
 	return json(
 		{
 			id,
-			// The only response in the system where key material travels in plaintext.
-			keys,
+			// One of two responses where key material travels in plaintext; the other is the
+			// mint route. Both reveal() at the boundary and nowhere else — see KeyMaterial.
+			keys: keys.map((k) => ({ id: k.id, label: k.label, role: k.role, key: k.key.reveal() })),
 			// Symmetrical with PUT /content: publishing markup seeds state from the values
 			// in it, and the agent should not have to issue a second read to learn which
 			// keys it just created.
 			state_keys: Object.keys(state as Record<string, unknown>).filter((key) => key !== "_vid"),
-			...docUrls(config, id, { write, read }),
+			// Same reason as PUT /content: the manual promises the server tells you what it had
+			// to alter or could not understand AT PUBLISH TIME, and creation is a publish.
+			warnings,
+			...docUrls(config, id, { shell, read }),
 			...(webhookSecret ? { webhook_secret: webhookSecret } : {}),
 			untrusted: UNTRUSTED,
 		},

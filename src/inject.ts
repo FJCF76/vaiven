@@ -14,9 +14,237 @@ export interface PreparedContent {
 }
 
 export interface Warning {
-	code: "added_doctype" | "stripped_meta_csp" | "stripped_base";
+	code:
+		| "added_doctype"
+		| "stripped_meta_csp"
+		| "stripped_base"
+		| "dark_mode_no_background"
+		| "no_viewport";
 	message: string;
 }
+
+/**
+ * Two failures the author structurally cannot see, detected at publish time.
+ *
+ * Both were first reported as documentation gaps. Documentation is the wrong remedy: the
+ * manual is fetched once, before any HTML is written, and these bugs are found by the person
+ * who opens the document — who has no channel back. `warnings` rides every read, so the agent
+ * meets this while it can still act. The content is already being parsed here, so the check
+ * is free.
+ *
+ * Deliberately conservative. A false positive costs an agent one confusing sentence; missing
+ * the real thing costs a person an unreadable page.
+ */
+function renderingWarnings(html: string): Warning[] {
+	const found: Warning[] = [];
+
+	// Both checks run over CSS ONLY — the contents of <style> elements and style attributes.
+	// Scanning the whole document produced two measured false-positive classes: a page that
+	// themes itself in JavaScript (`matchMedia("(prefers-color-scheme: dark)")`) tripped the
+	// dark trigger from its script, and base64 data: URIs tripped the viewport check, because
+	// `+` `/` `=` are word boundaries so `…/3vh+…` matches `\b3vh\b`. That hit 1 in 10 sample
+	// documents at 500 KB — and `guide.md` tells authors to embed assets as data: URIs, so the
+	// collision was designed in.
+	const css = styleText(html);
+
+	// The frame's canvas is `background: #fff` (shell.css) in every theme, because content
+	// cannot read the shell's theme. An author whose dark rules set `color` and not
+	// `background` ships light text on white, and sees nothing wrong locally where the page
+	// background follows their own OS setting.
+	const dark = darkBlocks(css);
+	if (dark !== "") {
+		// The question is whether the canvas is painted IN DARK MODE, not whether it is painted
+		// at all. `body{background:#fff}` plus a dark block that only sets `color` paints the
+		// canvas white and then writes light text on it — the exact reported bug — and a check
+		// for "painted anywhere" calls that page correct.
+		//
+		// The exception is the custom-property pattern, `body{background:var(--bg)}` with
+		// `--bg` retuned inside the dark block. That is idiomatic and correct, and warning on
+		// it would teach agents to ignore warnings.
+		const themedByVariable = /background(-color)?\s*:[^;}]*var\(/i.test(css) && paintsCanvas(css);
+		// A canvas painted dark for BOTH themes is fine: dark text rules sit on a dark page, and
+		// warning would be a false positive. A canvas painted LIGHT for both themes is exactly
+		// the reported bug. So the colour decides, and only when it is a literal we can read.
+		const alreadyDark = canvasIsDark(css);
+		if (!paintsCanvas(dark) && !themedByVariable && !alreadyDark) {
+			found.push({
+				code: "dark_mode_no_background",
+				message:
+					"Your dark-mode block never paints a background on the canvas (html, body or :root). The frame you publish into is white in every theme and cannot read the viewer's, so dark rules that only change `color` produce light text on a white page. Paint the canvas inside the same block, or drive it from a custom property you retune there.",
+			});
+		}
+	}
+
+	// The shell sizes the frame to the content's own scrollHeight, so the frame has no viewport
+	// that scrolls. `100vh` is the sharp one: it is circular, and content outside the block
+	// grows the document on every resize round trip until the clamp.
+	const viewportUnits = /\b\d*\.?\d+(vh|dvh|svh|lvh)\b/i.test(css);
+	const fixedOrSticky = /position\s*:\s*(fixed|sticky)/i.test(css);
+	if (viewportUnits || fixedOrSticky) {
+		const parts: string[] = [];
+		if (viewportUnits)
+			parts.push(
+				"viewport height units (vh/dvh/svh) are circular here and will grow the page on every resize until it is clamped",
+			);
+		if (fixedOrSticky)
+			// Deliberately hedged. `sticky` DOES work inside a scroll container the author makes
+			// themselves, and `fixed` has defined behaviour; what is absent is the outer viewport
+			// people assume. A warning that overstates is worse than none.
+			parts.push(
+				"position: fixed pins to the frame rather than to the window the reader is scrolling, and position: sticky does nothing unless you made your own scrolling container",
+			);
+		found.push({
+			code: "no_viewport",
+			message: `The frame is sized to your content's height, so there is no viewport that scrolls: ${parts.join("; ")}. Size in rem, % or px, and let the page be as tall as it is.`,
+		});
+	}
+
+	return found;
+}
+
+/**
+ * Every `<style>` body and `style=` attribute value, concatenated.
+ *
+ * Extracted with `indexOf` from a cursor that only ever moves FORWARD. The obvious regex,
+ * `/<style\b[^>]*>([\s\S]*?)<\/style>/g`, is quadratic on unterminated openers: for every
+ * `<style>` with no `</style>` after it, the lazy group expands to the end of the document,
+ * fails, and the engine restarts at the next opener. Measured on the real path: 50,000 bare
+ * `<style>` tags took 9.7 s, and 200,000 took 148 s — inside the 4 MB content cap, on the
+ * UNAUTHENTICATED `GET /c/:id` route, in a single-threaded process. That is not a slow read
+ * for one person, it is downtime for every tenant.
+ *
+ * This is the third quadratic scan to reach this file. The rule that finally works: never let
+ * a search restart behind where the previous one ended.
+ */
+function styleText(html: string): string {
+	const parts: string[] = [];
+	let budget = MAX_CSS_BYTES;
+
+	let cursor = 0;
+	while (budget > 0) {
+		const open = html.indexOf("<style", cursor);
+		if (open === -1) break;
+		const contentStart = html.indexOf(">", open);
+		if (contentStart === -1) break;
+		const close = html.indexOf("</style", contentStart);
+		// Unterminated. Stop rather than looking for the next opener: continuing is exactly the
+		// rescan that made the regex quadratic.
+		if (close === -1) break;
+		const block = html.slice(contentStart + 1, Math.min(close, contentStart + 1 + budget));
+		budget -= block.length;
+		parts.push(block);
+		cursor = close + "</style".length;
+	}
+
+	// Bounded per match, so no amount of unbalanced quoting can make these superlinear.
+	for (const match of html.matchAll(/\sstyle\s*=\s*"([^"]{0,2000})"/gi)) {
+		if (budget <= 0) break;
+		const value = match[1] ?? "";
+		budget -= value.length;
+		parts.push(`body{${value}}`);
+	}
+	for (const match of html.matchAll(/\sstyle\s*=\s*'([^']{0,2000})'/gi)) {
+		if (budget <= 0) break;
+		const value = match[1] ?? "";
+		budget -= value.length;
+		parts.push(`body{${value}}`);
+	}
+
+	return parts.join("\n");
+}
+
+/** A document may carry 4 MB; no realistic stylesheet inside one is worth more than this to
+ *  scan, and a cap means every check downstream is bounded no matter what arrives. */
+const MAX_CSS_BYTES = 512 * 1024;
+
+/**
+ * Walk every rule exactly once, left to right.
+ *
+ * The obvious implementations are both quadratic and both shipped here before this one. A
+ * selector-through-declaration regex (`[^{}]*\{`) rescans the remaining megabytes from every
+ * candidate. Replacing it with `indexOf("}", open + 1)` per candidate is quadratic on the
+ * opposite shape: many `{` and one `}`, where every iteration scans to the end. That measured
+ * 903 ms at 400 KB and roughly 90 s at the 4 MB content cap — and `prepareContent` runs on the
+ * UNAUTHENTICATED `GET /c/:id` path, in a single-threaded process, so one document stalls
+ * every tenant.
+ *
+ * This pass touches each character once and slices only bounded windows.
+ */
+function forEachRule(css: string, visit: (selector: string, declarations: string) => boolean): boolean {
+	// Indices, not strings. Pushing a bounded prelude string per `{` traded the CPU blowup for
+	// a memory one: 4 MB of `{` with no `}` is four million entries.
+	const preludeStarts: number[] = [];
+	let segmentStart = 0;
+	for (let i = 0; i < css.length; i++) {
+		const code = css.charCodeAt(i);
+		if (code === 123 /* { */) {
+			// Real CSS does not nest a thousand deep; anything that does is not worth scanning.
+			if (preludeStarts.length >= MAX_NESTING) return false;
+			preludeStarts.push(Math.max(segmentStart, i - 200));
+			preludeStarts.push(i);
+			segmentStart = i + 1;
+		} else if (code === 125 /* } */) {
+			const preludeEnd = preludeStarts.pop();
+			const preludeStart = preludeStarts.pop();
+			if (preludeStart !== undefined && preludeEnd !== undefined) {
+				if (visit(css.slice(preludeStart, preludeEnd), css.slice(segmentStart, i))) return true;
+			}
+			segmentStart = i + 1;
+		}
+	}
+	return false;
+}
+
+/** Deeper than any real stylesheet; a document that nests further is refusing to be parsed. */
+const MAX_NESTING = 1000;
+
+/** The contents of every `@media (prefers-color-scheme: dark)` block. */
+function darkBlocks(css: string): string {
+	// Same shape as forEachRule: numbers only, bounded depth. Negative marks a dark block.
+	const openAt: number[] = [];
+	const out: string[] = [];
+	let segmentStart = 0;
+	for (let i = 0; i < css.length; i++) {
+		const code = css.charCodeAt(i);
+		if (code === 123 /* { */) {
+			if (openAt.length >= MAX_NESTING) break;
+			const prelude = css.slice(Math.max(segmentStart, i - 200), i);
+			const isDark = /prefers-color-scheme\s*:\s*dark/i.test(prelude);
+			openAt.push(isDark ? -(i + 1) : i + 1);
+			segmentStart = i + 1;
+		} else if (code === 125 /* } */) {
+			const marker = openAt.pop();
+			if (marker !== undefined && marker < 0) out.push(css.slice(-marker, i));
+			segmentStart = i + 1;
+		}
+	}
+	return out.join("\n");
+}
+
+/**
+ * Does any rule paint a background on the canvas itself?
+ *
+ * `html`, `body`, `:root`, `body.dark`, `body:has(…)`, `html, body` all count. `:root` is
+ * included because it IS the html element and is the form an agent is most likely to write,
+ * custom properties living there — excluding it flagged correct pages.
+ *
+ * `body .card`, `body > main` and `.wrap body` do not count: those paint something inside the
+ * page while the canvas behind it stays white.
+ */
+function paintsCanvas(css: string): boolean {
+	return forEachRule(css, (selector, declarations) => {
+		if (!/background(-color)?\s*:/i.test(declarations)) return false;
+		for (const one of selector.split(",")) {
+			// Cut at the last `>` so the left side of a child combinator is dropped: `body > main`
+			// is not the canvas, while `html > body` is.
+			const angle = one.lastIndexOf(">");
+			const tail = angle === -1 ? one : one.slice(angle + 1);
+			if (/^\s*(html|body|:root)(?:[.#:[][^\s>+~,]*)*\s*$/i.test(tail)) return true;
+		}
+		return false;
+	});
+}
+
 
 const DOCTYPE_AT_START = /^\s*<!doctype\b[^>]*>/i;
 
@@ -66,6 +294,8 @@ export async function prepareContent(rawHtml: string, helper: string): Promise<P
 		});
 	}
 
+	warnings.push(...renderingWarnings(html));
+
 	const doctypeMatch = html.match(DOCTYPE_AT_START);
 
 	if (!doctypeMatch) {
@@ -104,4 +334,60 @@ export async function prepareContent(rawHtml: string, helper: string): Promise<P
 	const doctype = match[0];
 	const rest = html.slice(doctype.length);
 	return { html: `${doctype}\n<head>${scriptTag(helper)}</head>${rest}`, warnings };
+}
+
+/**
+ * Is the canvas painted a dark colour outside any theme block?
+ *
+ * Only literal colours are read — hex, `rgb()`, and the two keywords that actually appear.
+ * Anything unreadable answers `false`, so the uncertain case warns rather than staying quiet:
+ * a spurious warning costs a sentence, a missed one costs a person an unreadable page.
+ */
+function canvasIsDark(css: string): boolean {
+	let dark = false;
+	forEachRule(css, (selector, declarations) => {
+		const match = /background(?:-color)?\s*:\s*([^;}]+)/i.exec(declarations);
+		if (!match) return false;
+		for (const one of selector.split(",")) {
+			const angle = one.lastIndexOf(">");
+			const tail = angle === -1 ? one : one.slice(angle + 1);
+			if (!/^\s*(html|body|:root)(?:[.#:[][^\s>+~,]*)*\s*$/i.test(tail)) continue;
+			const luminance = readLuminance(match[1] ?? "");
+			// Later rules win in CSS, so keep looking rather than returning on the first hit.
+			if (luminance !== null) dark = luminance < 0.4;
+		}
+		return false;
+	});
+	return dark;
+}
+
+/** Rough perceived lightness, 0 (black) to 1 (white). `null` when the value is not a literal. */
+function readLuminance(value: string): number | null {
+	const text = value.trim().toLowerCase();
+	if (text.startsWith("#")) {
+		const hex = text.slice(1).replace(/[^0-9a-f].*$/, "");
+		const expanded =
+			hex.length === 3 || hex.length === 4
+				? hex
+						.slice(0, 3)
+						.split("")
+						.map((c) => c + c)
+						.join("")
+				: hex.length >= 6
+					? hex.slice(0, 6)
+					: null;
+		if (!expanded) return null;
+		const r = Number.parseInt(expanded.slice(0, 2), 16);
+		const g = Number.parseInt(expanded.slice(2, 4), 16);
+		const b = Number.parseInt(expanded.slice(4, 6), 16);
+		return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+	}
+	const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(text);
+	if (rgb) {
+		const [r, g, b] = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+		return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+	}
+	if (text.startsWith("black")) return 0;
+	if (text.startsWith("white")) return 1;
+	return null;
 }

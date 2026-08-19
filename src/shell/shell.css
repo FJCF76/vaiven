@@ -25,7 +25,6 @@
 	--warn: #8a5a00;
 	--warn-soft: #fdf3e0;
 	--danger: #a03232;
-	--on-accent: #ffffff;
 	--scrim: rgba(0, 0, 0, .4);
 	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	--sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -43,8 +42,7 @@
 		--warn: #e0b062;
 		--warn-soft: #2b2418;
 		--danger: #e08585;
-		--on-accent: #06231f;
-		--scrim: rgba(0, 0, 0, .6);
+			--scrim: rgba(0, 0, 0, .6);
 	}
 }
 
@@ -149,7 +147,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:active { transform: translateY(1px); }
 button[disabled] { opacity: .45; cursor: default; }
 
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.link { border-color: transparent; color: var(--muted); text-decoration: underline; padding: 7px 4px; }
 
 /* ------------------------------------------------------------------------ notices */
@@ -170,6 +167,15 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
+/* The consent notice is the one sentence whose entire job is to be read and believed. Left
+   uncapped it set at 184 characters per line on a 1280px viewport, roughly two and a half
+   times a readable measure, so it scanned as boilerplate. Capped, it wraps to two lines and
+   the brand mark falls at the end of a short line rather than trailing a very long one. */
+.disclosure span { max-width: 60ch; }
+/* Aligned to the BOTTOM of the wrapped notice, not its first baseline. Baseline-aligned it
+   parked beside line one with the rest of the bar empty to its right, reading as a stray
+   word; at the foot of the block it reads as a signature on the statement. */
+.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; }
 .disclosure {
 	padding: var(--space-2) var(--gutter);
 	font-size: 12px;
@@ -238,8 +244,6 @@ dialog::backdrop { background: var(--scrim); }
 .panel-head h2 { font-size: 15px; margin: 0; }
 .panel-body { padding: var(--space-1) var(--space-4) var(--space-4); max-height: 60vh; overflow-y: auto; }
 .panel-body p { margin: var(--space-3) 0; }
-.field-label { display: block; font-size: 13px; margin: var(--space-3) 0 var(--space-2); }
-.panel-body textarea {
 	width: 100%;
 	font: inherit;
 	font-size: 14px;
@@ -250,8 +254,6 @@ dialog::backdrop { background: var(--scrim); }
 	color: var(--ink);
 	resize: vertical;
 }
-.panel-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.panel-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
 .panel-body > p { font-size: 13px; color: var(--muted); }
 .event { display: grid; grid-template-columns: 4.25rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .event:last-child { border-bottom: 0; }

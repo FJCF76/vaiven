@@ -358,6 +358,23 @@
 			if (paint) paint();
 		},
 
+		/**
+		 * Append a note to the document's log.
+		 *
+		 * The honest name. `log(kind, payload)` shipped first and its `kind` is not a kind —
+		 * the shell forces `kind: "note"` and carries the caller's word as the note TEXT, so
+		 * `Vaiven.log("error", …)` silently is not an error event and filtering on
+		 * `kind === "error"` never matches it. An API whose first parameter lies is a trap
+		 * documentation can only mitigate, and the manual has been mitigating it.
+		 */
+		note(text, payload) {
+			send({ type: "event", kind: String(text).slice(0, 60), payload: payload ?? {} });
+		},
+
+		/** The old name for `note`. Kept forever, not deprecated at runtime: published
+		 *  `content` is served from the database and never rebuilt, so every document already
+		 *  calling this must keep working. A console warning would fire in the person's
+		 *  browser, not the agent's, so it would scold the wrong party. */
 		log(kind, payload) {
 			send({ type: "event", kind: String(kind).slice(0, 60), payload: payload ?? {} });
 		},

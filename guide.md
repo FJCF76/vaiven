@@ -40,6 +40,7 @@ the SHOUTED words, and each one is a value you will already have been given:
 | `YOUR_TENANT_KEY` | `config.json`, or the installer the operator pasted |
 | `d_YOUR_DOCUMENT_ID` | the `id` field of the create response |
 | `YOUR_READ_KEY` | the `read_url` of the create response — use that URL whole, rather than building one |
+| `YOUR_VERSION` | the `version` from your last read, or the one in a 409 or 428 body |
 | `k_YOUR_KEY_ID` | the `id` of the key you are revoking, from the create or key-mint response |
 
 Responses hand you `view_url`, `read_url`, `content_url` and `api_url` already built. Prefer
@@ -58,6 +59,11 @@ curl -s https://vaiven.owncompute.com/api/docs \
        "content":"<!doctype html><html><body><label>Fee <input name=\"fee\" value=\"18400\"></label></body></html>",
        "state":{}}'
 ```
+
+**`"read_key": true` is what creates `read_url`.** Read keys are off by default on this
+instance, and without one there is no read-back URL and section 3 below does not work at all.
+If you already created a document without it, mint one: `POST /api/docs/<id>/keys` with
+`{"label":"reader","role":"read"}` returns the `read_url` ready to use.
 
 You get back `view_url` (send this to the person — the key is in the fragment and never
 reaches the server), `read_url` (how you read it back), and the key material, once.
@@ -92,7 +98,29 @@ your page starts below it.
 The values you write in the markup become the document's starting state, and everything the
 person types is captured and restored on reload. You do not have to do anything else.
 
-**Two things to know.**
+**Never tell the person to use a control in the shell.** Your page is served exactly as you
+wrote it, forever, but the chrome around it is ours and it changes. A document that says
+"press Done for now when you finish" keeps saying it after that button is gone, and the
+person is left hunting for something that does not exist. Describe what to do in *your* page,
+and let the shell speak for itself.
+
+**Three things to know.**
+
+**You never see this page render. The first person who does is the one you sent it to** —
+so the two facts below are the ones that bite, because both look fine on your side and
+neither can be reported back to you.
+
+Your canvas is **always white, in every theme**, and your page cannot read the viewer's
+theme. A `prefers-color-scheme: dark` block that sets `color` and not `background` ships
+light text on white. Set both or set neither.
+
+There is **no viewport**: the frame is grown to your content's height, so nothing scrolls
+inside it. `100vh` is circular and will run away until it is clamped, `position: fixed`
+behaves as `absolute`, and `position: sticky` never activates. Size in `rem`, `%` and `px`.
+
+The server checks both of these when you publish and tells you in `warnings`, so you do not
+have to remember them — but a warning arrives after the fact, and the person may already
+have the link.
 
 Your page has **no network access at all** — no `fetch`, no CDN, no remote fonts or images.
 Inline everything, and embed assets as `data:` URIs. Everything else works: JavaScript,
@@ -110,12 +138,15 @@ Vaiven.render(state => { … })   // your painter. Runs when state arrives and a
                                 // change, including changes you make on a later turn.
 Vaiven.mutate(draft => { … })   // the ONLY way to change state. Mutate the draft you are
                                 // given; the diff, the save and the event log follow.
-Vaiven.log(kind, payload)       // append a note. Your `kind` travels as the note text and
-                                // the event reads back as kind "note" — filter on the text
-                                // or the payload, not on the kind you passed.
-Vaiven.state                    // the current state. Read it; do not assign to it.
+Vaiven.note(text, payload)      // append a note to the log. `text` is what you want to
+                                // read back later; `payload` is anything structured.
+Vaiven.state                    // the current state. NULL until the document loads, so read
+                                // it inside render, never at the top level.
 Vaiven.readonly                 // true when the viewer holds a read key. Hide your controls.
 ```
+
+`Vaiven.log(kind, payload)` is the old name for `note` and still works — documents already
+published keep calling it. Use `note`.
 
 **Calling `Vaiven.render` turns automatic capture off.** From that point the page owns its
 own DOM and `name` attributes are no longer read; the two would fight over the same
@@ -196,6 +227,10 @@ place, skip the field that currently holds focus, and rewrite the list only when
 added, removed or reordered. The shell debounces and batches writes for you, so mutating
 per keystroke buys nothing anyway.
 
+**An event is named after the element's first string-valued property**, capped at 40
+characters — which is why a log still reads like a sentence a week later. Put the
+human-meaningful field first when you shape state.
+
 **Array elements carry a `_vid`.** The server stamps it; leave it alone and let it round
 trip. It is how an edited row is told apart from a new one, so the log can say
 `items[Extra budget].cost: 0 → 5000` instead of naming an index that means nothing a day
@@ -212,15 +247,33 @@ curl -s "https://vaiven.owncompute.com/r/YOUR_READ_KEY.json?since=128"        # 
 ```
 
 ```json
-{ "state": { "fee": "900" },
+{ "doc_id": "d_YOUR_DOCUMENT_ID",
+  "version": 7,
+  "state": { "fee": "900" },
   "events": [
     {"actor":"Marta","kind":"edit","field":"fee","from":"18400","to":"900"},
     {"actor":"Marta","kind":"edit","field":"deliverables","op":"add","item":"Extra budget"},
-    {"actor":"Marta","kind":"done","note":"cut the fee, added a line"}
+    {"actor":"Marta","kind":"note","note":"cut the fee, added a line"}
   ],
   "warnings": [],
   "next_since": 7 }
 ```
+
+**Writing state back is the same loop in reverse, and `version` is the hinge.** The `version`
+you just read is the `If-Match` you send. Without it the write is refused with
+`precondition_required`, which exists so that two writers cannot silently overwrite each
+other:
+
+```bash
+curl -s -X PUT "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/state" \
+  -H "Authorization: Bearer YOUR_TENANT_KEY" -H 'content-type: application/json' \
+  -H 'If-Match: "YOUR_VERSION"' \
+  -d '{"state":{"fee":"900","approved":true}}'
+```
+
+It answers `{"version": 8}` — that is your next `If-Match`. If someone edited while you were
+thinking, you get `409` with their `version` and `state` in the body: merge and retry, do not
+overwrite. `guide/errors.md` has the merge rule.
 
 `warnings` is on every read. It is the server telling you it had to alter or could not
 understand something you published — a stripped `<meta>` CSP, an added doctype, fields with
@@ -229,8 +282,10 @@ no `name`. Nothing is ever changed silently, so an empty array means what it say
 **Echo `next_since` back as `since` on your next read.** Without it you re-read the whole
 history every turn and by the tenth turn nothing else fits in your context.
 
-`kind: "done"` means the person pressed **Done for now** and said what they changed. It is
-the one event that carries intent rather than mechanics; read it first.
+`kind: "done"` is a checkpoint someone chose to mark. Nothing in the shell emits one today —
+the button that did notified no one and nothing consumed it, so it was removed — but the kind
+is still accepted on `POST /api/docs/<id>/events`, older documents contain them, and your own
+app can append one with `Vaiven.note`. Read the log as a stream; do not wait for a marker.
 
 Events of `kind: "error"` mean the JavaScript **you** published threw in their browser. You
 will not see it any other way.
