@@ -98,6 +98,12 @@ your page starts below it.
 The values you write in the markup become the document's starting state, and everything the
 person types is captured and restored on reload. You do not have to do anything else.
 
+**Never tell the person to use a control in the shell.** Your page is served exactly as you
+wrote it, forever, but the chrome around it is ours and it changes. A document that says
+"press Done for now when you finish" keeps saying it after that button is gone, and the
+person is left hunting for something that does not exist. Describe what to do in *your* page,
+and let the shell speak for itself.
+
 **Three things to know.**
 
 **You never see this page render. The first person who does is the one you sent it to** —
