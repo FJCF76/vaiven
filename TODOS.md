@@ -389,6 +389,10 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
 ## Documentation
 
+- **`README.md` claimed the CLI has `enable` and `disable` verbs. It does not.** Corrected in
+  0.3.0.0 to describe what is actually there. The verbs themselves are still missing; that is
+  the separate P3 entry above.
+
 - **The unit-test count in `README.md` is a hand-maintained number.** It said 233 when the
   suite had 235; it had drifted across two releases before anyone read that line. A static
   guard would be wrong, because many tests are generated inside loops (172 literal `test(`
