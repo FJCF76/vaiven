@@ -258,6 +258,18 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   from a test file would leak into every other file in the same bun process.
   **Priority:** P3
 
+- **The two rendering warnings read prose as CSS.** `dark_mode_no_background` and
+  `no_viewport` scan the whole published document, so a tutorial that shows
+  `position: fixed` inside a `<pre>`, or an article about dark mode, earns a warning it does
+  not deserve. Accepted deliberately for now: a false positive costs an agent one confusing
+  sentence, and missing the real thing costs a person an unreadable page. The asymmetry
+  favours warning.
+
+  **How to apply, if it becomes noise:** scan only inside `<style>` elements and `style=`
+  attributes rather than the whole document. That is a narrower scan, not a smarter one, and
+  it would miss CSS injected by script — which is why it was not done first.
+  **Priority:** P3
+
 ## Shell
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`

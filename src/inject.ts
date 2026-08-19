@@ -38,26 +38,21 @@ export interface Warning {
 function renderingWarnings(html: string): Warning[] {
 	const found: Warning[] = [];
 
-	// The frame's canvas is `background: #fff` (shell.css) in every theme, because there is
-	// no way for content to read the shell's theme. An author who writes a dark-mode block
-	// that sets `color` and not `background` ships light text on white — and sees nothing
-	// wrong locally, where the page background follows their own OS setting.
-	if (/prefers-color-scheme\s*:\s*dark/i.test(html)) {
-		const paintsCanvas =
-			/(^|[,{}\s])(html|body)\b[^{}]*\{[^}]*background(-color)?\s*:/is.test(html) ||
-			/<(html|body)[^>]*style=["'][^"']*background/i.test(html);
-		if (!paintsCanvas) {
-			found.push({
-				code: "dark_mode_no_background",
-				message:
-					"Your content has a prefers-color-scheme: dark block but never paints a background on html or body. The frame you publish into is white in every theme and cannot read the viewer's, so dark rules that only change `color` produce light text on a white page. Set both, or set neither.",
-			});
-		}
+	// The frame's canvas is `background: #fff` (shell.css) in every theme, because content
+	// cannot read the shell's theme. An author who writes a dark-mode block that sets `color`
+	// and not `background` ships light text on white — and sees nothing wrong locally, where
+	// the page background follows their own OS setting.
+	if (/prefers-color-scheme\s*:\s*dark/i.test(html) && !paintsCanvas(html)) {
+		found.push({
+			code: "dark_mode_no_background",
+			message:
+				"Your content has a prefers-color-scheme: dark block but never paints a background on html or body. The frame you publish into is white in every theme and cannot read the viewer's, so dark rules that only change `color` produce light text on a white page. Set both, or set neither.",
+		});
 	}
 
-	// The shell sizes the frame to the content's own scrollHeight, so there is no viewport
-	// that scrolls. `100vh` is the sharp one: it is circular, and any content outside the
-	// block grows the document by that much on every resize round trip until the clamp.
+	// The shell sizes the frame to the content's own scrollHeight, so the frame has no
+	// viewport that scrolls. `100vh` is the sharp one: it is circular, and content outside the
+	// block grows the document on every resize round trip until the clamp.
 	const viewportUnits = /\b\d*\.?\d+(vh|dvh|svh|lvh)\b/i.test(html);
 	const fixedOrSticky = /position\s*:\s*(fixed|sticky)/i.test(html);
 	if (viewportUnits || fixedOrSticky) {
@@ -67,7 +62,13 @@ function renderingWarnings(html: string): Warning[] {
 				"viewport height units (vh/dvh/svh) are circular here and will grow the page on every resize until it is clamped",
 			);
 		if (fixedOrSticky)
-			parts.push("position: fixed behaves as absolute, and position: sticky never activates");
+			// Deliberately hedged. `sticky` DOES work inside a scroll container the author makes
+			// themselves, and `fixed` has defined behaviour; what is absent is the outer
+			// viewport people assume. Claiming they "never work" would be false, and a warning
+			// that is false is worse than no warning.
+			parts.push(
+				"position: fixed pins to the frame rather than to the window the reader is scrolling, and position: sticky does nothing unless you made your own scrolling container",
+			);
 		found.push({
 			code: "no_viewport",
 			message: `The frame is sized to your content's height, so there is no viewport that scrolls: ${parts.join("; ")}. Size in rem, % or px, and let the page be as tall as it is.`,
@@ -76,6 +77,65 @@ function renderingWarnings(html: string): Warning[] {
 
 	return found;
 }
+
+/**
+ * Does any rule set a background on the canvas itself?
+ *
+ * Split on braces and inspect each rule rather than matching selector-through-declaration in
+ * one regex. The regex form was quadratic — `[^{}]*\{` rescans the remaining megabytes from
+ * every candidate when a document contains many `body` tokens and few braces, which a 4 MB
+ * publish can turn into a stalled event loop. It was also wrong: `body .card { background }`
+ * matched, so a page that paints a CARD and not the canvas counted as safe.
+ *
+ * `html`, `body`, `body.dark`, `body:has(...)`, `html, body` all count. `body .card`,
+ * `body > main` and `.wrap body` do not — those paint something inside the page.
+ */
+function paintsCanvas(html: string): boolean {
+	if (/<(html|body)[^>]{0,400}style=["'][^"']{0,400}background/i.test(html)) return true;
+
+	let cursor = 0;
+	while (cursor < html.length) {
+		const open = html.indexOf("{", cursor);
+		if (open === -1) return false;
+		const close = html.indexOf("}", open + 1);
+		if (close === -1) return false;
+
+		// An at-rule (`@media`, `@supports`, `@layer`) opens a block that contains further
+		// rules, so the next delimiter is another `{` rather than `}`. Descend into it instead
+		// of reading its contents as declarations — nearly every dark-mode rule worth finding
+		// lives one level inside `@media (prefers-color-scheme: dark)`, so a scanner that does
+		// not nest finds none of them.
+		const nextOpen = html.indexOf("{", open + 1);
+		if (nextOpen !== -1 && nextOpen < close) {
+			cursor = open + 1;
+			continue;
+		}
+
+		const declarations = html.slice(open + 1, close);
+		if (/background(-color)?\s*:/i.test(declarations)) {
+			// The selector runs from the previous brace to this one, bounded so a document with
+			// no braces at all cannot make this scan quadratic.
+			const previousBrace = Math.max(html.lastIndexOf("{", open - 1), html.lastIndexOf("}", open - 1)) + 1;
+			let selectorText = html.slice(Math.max(previousBrace, open - 200), open);
+			// Cut at the last `>`. It does two jobs: it drops the markup before an inline
+			// `<style>` (otherwise the "selector" for the first rule is the whole document
+			// prefix), and it drops the left side of a child combinator, so `body > main`
+			// correctly does NOT count as painting the canvas while `html > body` does.
+			const lastAngle = selectorText.lastIndexOf(">");
+			if (lastAngle !== -1) selectorText = selectorText.slice(lastAngle + 1);
+			const selectors = selectorText.split(",");
+			for (const selector of selectors) {
+				// A canvas selector is `html` or `body` plus optional class, id, pseudo or
+				// attribute — and nothing else. A space or combinator means it is targeting a
+				// descendant, which is not the canvas.
+				if (/^\s*(html|body)[.#:[][^\s>+~]*\s*$|^\s*(html|body)\s*$/i.test(selector)) return true;
+			}
+		}
+		cursor = close + 1;
+	}
+	return false;
+}
+
 
 const DOCTYPE_AT_START = /^\s*<!doctype\b[^>]*>/i;
 

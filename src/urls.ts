@@ -31,17 +31,21 @@ export function docUrls(
 	keys: { shell?: KeyMaterial; read?: KeyMaterial } = {},
 ): DocUrls {
 	return {
-		// Built with URLSearchParams, not string concatenation, because `shell.js` parses this
-		// fragment with `new URLSearchParams(location.hash.slice(1)).get("k")` — and that
-		// decodes `+` as a SPACE. `encodeURIComponent` does not escape `+`, so the obvious
-		// producer is wrong for the real consumer for any key containing one. Today the
-		// alphabet is base64url and cannot emit `+`; nothing enforced that, so now a test does.
+		// Built with the same class the consumer parses with: `shell.js` reads this fragment as
+		// `new URLSearchParams(location.hash.slice(1)).get("k")`, so constructing it the same
+		// way means producer and consumer cannot drift apart.
+		//
+		// Correcting a claim an earlier draft of this comment made: `encodeURIComponent` DOES
+		// escape `+`, to `%2B`, which `URLSearchParams` decodes back correctly — the previous
+		// construction was not broken. `URLSearchParams` is preferred for symmetry, not as a
+		// bug fix. A raw `+` in the fragment would decode as a space, which is why neither side
+		// should ever concatenate one in by hand.
 		...(keys.shell
 			? { view_url: `${config.appOrigin}/d/${docId}#${new URLSearchParams({ k: keys.shell.reveal() })}` }
 			: {}),
-		// The key is a PATH segment here and `.json` is parsed off the end (read.ts), so it is
-		// encoded even though base64url needs no encoding. The asymmetry with `view_url` was
-		// the latent half of the same bug.
+		// The key is a PATH segment here and `.json` is parsed off the end, so it is encoded
+		// even though base64url needs none. `read.ts` decodes it back before hashing — encode
+		// here without decoding there and a key needing escapes would simply never resolve.
 		...(keys.read
 			? { read_url: `${config.appOrigin}/r/${encodeURIComponent(keys.read.reveal())}.json` }
 			: {}),
@@ -54,9 +58,14 @@ export function docUrls(
 /**
  * The one place a minted key becomes a response body.
  *
- * `reveal()` is called here and in `docUrls` above, and nowhere else in the codebase. That is
- * the whole enforcement story: `KeyMaterial` is not a string, so the compiler rejects any
- * other route that tries to put one in a body.
+ * `reveal()` is called only where a secret is deliberately crossing out of the process: here
+ * in `urls.ts` when a URL is built, in `api.ts` where document creation serializes the keys it
+ * just minted, and in `cli.ts` where the operator is shown a key on their own terminal. Grep
+ * for it — the call sites ARE the audit list. The compiler stops another appearing by
+ * accident, because `KeyMaterial` is not a string.
+ *
+ * (An earlier version of this comment counted the sites per file and got the counts wrong,
+ * which is a good argument for describing a boundary rather than tallying one.)
  *
  * Role matters. A write key opens the shell and is deliberately NOT a `/r/` key — `read.ts`
  * returns the opaque miss for it. A read key is both: it opens the shell read-only AND
