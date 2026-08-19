@@ -1,5 +1,9 @@
 # Design: the agent contract — everything an agent is told or handed
 
+> **Revised 2026-08-19 after review.** The original plan is preserved below the fold; the
+> review dismantled enough of it that the delta is the useful record. See "What review
+> changed" at the end.
+
 Cycle 1 of three, from a third-party agent's first build against v0.2.5.1 on 2026-08-19.
 Cycles 2 (shell copy) and 3 (read-time event coalescing) are scoped separately and are
 **not** in this one.
@@ -161,3 +165,77 @@ Cycles 1 and 2 both edit `guide.md`, so they run sequentially, never in parallel
 - `guide.md` guards already assert no shell placeholders, no relative pointers, and that the
   sandbox origin survives the serve-time rewrite; the four new sections inherit them.
 - A live mint of both roles, with the resulting `view_url` opened, before the cycle closes.
+
+---
+
+# What review changed
+
+Four voices ran: Codex and an independent Claude reviewer on strategy, the same pair on
+architecture and developer experience. Everything below was verified against the source
+before it was accepted.
+
+## The plan was wrong about four things
+
+1. **Guard 2 was false the day it was written.** `src/routes/api.ts:325,329` has serialized
+   plaintext keys since the first release, under a comment claiming to be "the only response
+   in the system where key material travels in plaintext" — which `writes.ts:657` already
+   made false. The plan asserted one file and explicitly refused to touch the second.
+2. **The headline documentation example would have failed the build.** `-H "If-Match: $ETAG"`
+   matches the placeholder guard at `test/guide.test.ts:82` — the guard added two releases
+   ago to stop `$HOST` from coming back. The plan proposed reintroducing the exact defect the
+   guard exists to catch.
+3. **Guard 1 could not have run.** `bun test` collects `*.test.ts`; the live suites are
+   `bun run` scripts. A green test run would have meant the guard never executed. And it
+   could not have caught the bug regardless: a URL fragment never reaches the server, so
+   "open the `view_url`" asserts nothing. Only `shell.js:21` resolves `#k=`.
+4. **The `/r/` deprioritisation rested on a false premise.** `mint_read_key` is read at
+   exactly one place, `api.ts:258`, and gates only whether *document creation* auto-mints a
+   reader. `POST /keys {"role":"read"}` mints a working public read key on a tenant with the
+   flag off — measured, 200. The plan asserted the opposite two sections after proving it.
+
+## Three things nobody had found
+
+- **A fourth instance of the defect class**, in `src/cli.ts:181`: `#k=${minted.plaintext}`
+  with no `encodeURIComponent`, diverging from `urls.ts:30`. The operator's own path for
+  handing someone a link.
+- **`100vh` does not "do nothing."** `helper.js:263` reports `scrollHeight` and
+  `shell.js:450` sizes the frame to it, so any content outside the `100vh` block grows the
+  document by that much per round trip until the 20000px clamp. Documenting it as inert would
+  have been wrong.
+- **`read_key` has no prose and is off by default** (`schema.sql:17`). Without it there is no
+  `read_url`, and §3 — the read-back loop the product exists for — is unreachable. Same
+  defect axis as the mint bug, untouched by the original plan.
+
+## Decisions taken
+
+**The guard is now the type system.** `KeyMaterial` wraps the secret; `reveal()` is called in
+one place; `toJSON()` returns `"[redacted]"`. `tsc --noEmit` already runs in CI and rejects
+every other attempt to put it in a response body. This survives renames, destructuring,
+spreads and helper indirection — the objections that killed the source scan — and its failure
+mode is redaction rather than a leaked key. The static scan is deleted, not weakened.
+
+**Cycles 1 and 2 merge.** The consent disclosure — reported by the only real human who has
+used this system, reaction *"nobody sent me a link"* — was queued behind agent-facing URL
+hardening. Both strategy voices called that ordering backwards: it is the first sentence a
+non-author human reads, and the kill criterion counts non-author humans. It ships here, with
+the Done button removal, in one design review of one chrome surface.
+
+**Two of the documentation items become `warnings` codes.** The plan diagnosed that the author
+cannot self-detect the white canvas, then prescribed a paragraph in a manual read once before
+any HTML is written. That is the same remedy class as `$HOST` and the CLI-in-hints. `warnings`
+is already on every read and already promises "the server telling you it had to alter or could
+not understand something you published." `content` is already parsed by HTMLRewriter at
+publish time, so the detection is free.
+
+## Still not in this release
+
+Read-time event coalescing stays cycle 3: it changes what every existing history reads back
+as, and deserves its own pass. Signup and self-service tenancy stay closed.
+
+## Recorded, not fixed
+
+`postKey` does not honour `mint_read_key`. The tenant switch that reads as "no public URLs for
+this tenant" is enforced on document creation and not on minting, so a read-role key on a
+flag-off tenant yields a working public URL. This release advertises that URL. It is a policy
+question, not a bug to fix mid-cycle: either `postKey` refuses, or the flag is documented as a
+creation-time default rather than tenant policy. Filed in `TODOS.md`.

@@ -18,7 +18,7 @@ function makeTenant(name: string, disabled = 0): { id: string; key: string } {
 	db.query(
 		"INSERT INTO tenants (id, name, key_hash, disabled, created_at) VALUES (?, ?, ?, ?, ?)",
 	).run(id, name, hash, disabled, Date.now());
-	return { id, key: plaintext };
+	return { id, key: plaintext.reveal() };
 }
 
 function makeDoc(tenant: string): string {
@@ -39,8 +39,8 @@ beforeEach(() => {
 	tenantKey = tenant.key;
 	docId = makeDoc(tenantId);
 	otherDocId = makeDoc(tenantId);
-	writeKey = insertDocKey(db, docId, "Marta", "write").plaintext;
-	readKey = insertDocKey(db, docId, "reader", "read").plaintext;
+	writeKey = insertDocKey(db, docId, "Marta", "write").plaintext.reveal();
+	readKey = insertDocKey(db, docId, "reader", "read").plaintext.reveal();
 });
 
 describe("resolver", () => {

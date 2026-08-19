@@ -14,8 +14,67 @@ export interface PreparedContent {
 }
 
 export interface Warning {
-	code: "added_doctype" | "stripped_meta_csp" | "stripped_base";
+	code:
+		| "added_doctype"
+		| "stripped_meta_csp"
+		| "stripped_base"
+		| "dark_mode_no_background"
+		| "no_viewport";
 	message: string;
+}
+
+/**
+ * Two failures the author structurally cannot see, detected at publish time.
+ *
+ * Both were first reported as documentation gaps. Documentation is the wrong remedy: the
+ * manual is fetched once, before any HTML is written, and these bugs are found by the person
+ * who opens the document — who has no channel back. `warnings` rides every read, so the agent
+ * meets this while it can still act. The content is already being parsed here, so the check
+ * is free.
+ *
+ * Deliberately conservative. A false positive costs an agent one confusing sentence; missing
+ * the real thing costs a person an unreadable page.
+ */
+function renderingWarnings(html: string): Warning[] {
+	const found: Warning[] = [];
+
+	// The frame's canvas is `background: #fff` (shell.css) in every theme, because there is
+	// no way for content to read the shell's theme. An author who writes a dark-mode block
+	// that sets `color` and not `background` ships light text on white — and sees nothing
+	// wrong locally, where the page background follows their own OS setting.
+	if (/prefers-color-scheme\s*:\s*dark/i.test(html)) {
+		const paintsCanvas =
+			/(^|[,{}\s])(html|body)\b[^{}]*\{[^}]*background(-color)?\s*:/is.test(html) ||
+			/<(html|body)[^>]*style=["'][^"']*background/i.test(html);
+		if (!paintsCanvas) {
+			found.push({
+				code: "dark_mode_no_background",
+				message:
+					"Your content has a prefers-color-scheme: dark block but never paints a background on html or body. The frame you publish into is white in every theme and cannot read the viewer's, so dark rules that only change `color` produce light text on a white page. Set both, or set neither.",
+			});
+		}
+	}
+
+	// The shell sizes the frame to the content's own scrollHeight, so there is no viewport
+	// that scrolls. `100vh` is the sharp one: it is circular, and any content outside the
+	// block grows the document by that much on every resize round trip until the clamp.
+	const viewportUnits = /\b\d*\.?\d+(vh|dvh|svh|lvh)\b/i.test(html);
+	const fixedOrSticky = /position\s*:\s*(fixed|sticky)/i.test(html);
+	if (viewportUnits || fixedOrSticky) {
+		const parts: string[] = [];
+		if (viewportUnits)
+			parts.push(
+				"viewport height units (vh/dvh/svh) are circular here and will grow the page on every resize until it is clamped",
+			);
+		if (fixedOrSticky)
+			parts.push("position: fixed behaves as absolute, and position: sticky never activates");
+		found.push({
+			code: "no_viewport",
+			message: `The frame is sized to your content's height, so there is no viewport that scrolls: ${parts.join("; ")}. Size in rem, % or px, and let the page be as tall as it is.`,
+		});
+	}
+
+	return found;
 }
 
 const DOCTYPE_AT_START = /^\s*<!doctype\b[^>]*>/i;
@@ -65,6 +124,8 @@ export async function prepareContent(rawHtml: string, helper: string): Promise<P
 				"Removed a <base> tag. It changes how every relative URL in the document resolves, including the helper's. Use absolute paths instead.",
 		});
 	}
+
+	warnings.push(...renderingWarnings(html));
 
 	const doctypeMatch = html.match(DOCTYPE_AT_START);
 

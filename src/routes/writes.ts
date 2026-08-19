@@ -5,6 +5,7 @@
 // tables and updates the byte counters — atomically, or not at all.
 
 import type { Database } from "bun:sqlite";
+import type { Config } from "../config.ts";
 import { insertDocKey, type Scope } from "../auth.ts";
 import { byteLength, writeTx } from "../db.ts";
 import { deriveEvents, fieldWarnings, reconcileVids, safeParse, stampVids, validateAnnotations, clamp } from "../events.ts";
@@ -12,6 +13,7 @@ import { fail } from "../errors.ts";
 import { isValidId } from "../ids.ts";
 import { LIMITS, RATES, enforceRate, requireWithin } from "../quota.ts";
 import { queueWebhook, validateWebhookUrl } from "../webhook.ts";
+import { mintedKeyBody } from "../urls.ts";
 import { forgetPrepared } from "./content.ts";
 import { prepareContent } from "../inject.ts";
 import { extractSeedFields, seedStateFromContentSync } from "../seed.ts";
@@ -633,7 +635,13 @@ export async function postEvents(
 
 // ------------------------------------------------------------------------ key routes
 
-export async function postKey(db: Database, request: Request, scope: Scope, id: string): Promise<Response> {
+export async function postKey(
+	db: Database,
+	request: Request,
+	config: Config,
+	scope: Scope,
+	id: string,
+): Promise<Response> {
 	requireCap(scope, "keys.mint", id);
 	loadDoc(db, scope, id);
 	const body = await readJson(request, 8192, "request");
@@ -654,7 +662,10 @@ export async function postKey(db: Database, request: Request, scope: Scope, id: 
 	}
 
 	const minted = writeTx(db, () => insertDocKey(db, id, label, role));
-	return json({ id: minted.id, label: minted.label, role: minted.role, key: minted.plaintext }, 201);
+	// A12. The response the agent reads must carry the URLs, or the agent builds them —
+	// which is how a person received a dead link. `no-store` because this body holds the
+	// secret three times over now: in `key`, in `view_url` and, for a read key, in `read_url`.
+	return json(mintedKeyBody(config, id, minted), 201, { "cache-control": "no-store" });
 }
 
 export function deleteKey(db: Database, scope: Scope, id: string, keyId: string): Response {

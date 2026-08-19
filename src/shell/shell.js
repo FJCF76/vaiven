@@ -57,15 +57,13 @@ const statusEl = el("div", "status", "");
 statusEl.dataset.kind = "clean";
 
 const recordedButton = el("button", "link", "What's recorded");
-const doneButton = el("button", "primary", "Done for now");
-doneButton.disabled = true;
 
 // Every save-state transition and every warning, including "don't close this tab", was
 // announced to nobody.
 statusEl.setAttribute("role", "status");
 statusEl.setAttribute("aria-live", "polite");
 
-bar.append(identity, statusEl, recordedButton, doneButton);
+bar.append(identity, statusEl, recordedButton);
 
 const disclosure = el("div", "disclosure");
 disclosure.hidden = true;
@@ -389,7 +387,6 @@ addEventListener("message", (event) => {
 			postToFrame({ type: "init", state: latestState ?? {}, version: doc?.version ?? 0, mode });
 			skeleton.hidden = true;
 			frame.hidden = false;
-			doneButton.disabled = mode !== "write";
 			break;
 
 		case "mutate":
@@ -496,17 +493,24 @@ function renderChrome() {
 	// A10: persistent, not dismissible, and outside the frame so content cannot suppress
 	// it. In automatic mode the author never knows this is happening, which makes the
 	// shell the only thing that can say so.
-	// Read-only viewers were told their edits are recorded. They cannot edit, and nothing
-	// they do is recorded — so the one sentence whose entire job is to be accurate about
-	// recording was inaccurate for everyone holding a read link.
+	//
+	// It used to say edits were "shared with whoever sent you this link". The first person
+	// to actually use this system opened their OWN document and answered: "nobody sent me a
+	// link." The sentence named a party the reader could not identify, so the one claim
+	// whose entire job is to be believed was the one they could not check.
+	//
+	// Every clause below has to hold in three cases at once: a stranger who was sent a write
+	// link, a stranger who was sent a read link, and the author opening their own document.
+	// That third case is what the old wording forgot. No sender is presupposed, and the
+	// claims are separated rather than welded into one line.
 	disclosure.hidden = false;
 	disclosure.replaceChildren(
 		el(
 			"span",
 			null,
 			mode === "write"
-				? `Edits here are recorded as “${label}” and shared with whoever sent you this link. Anyone who has the link can edit it too. Vaivén.`
-				: `You can read this document but not change it. Nothing you do here is recorded. Anyone who has the link can read it too. Vaivén.`,
+				? `Your edits save automatically and are recorded under the name “${label}”. Anyone with this link can open this page, and whoever created the document can read back what changed.`
+				: `You can read this document but not change it. Nothing you do here is recorded. Anyone with this link can read it too.`,
 		),
 	);
 
@@ -588,60 +592,19 @@ function renderRecord(events) {
 }
 
 // ----------------------------------------------------------------- done for now
+//
+// REMOVED. The button appended {kind:"done"} to the log and nothing else: no consumer reads
+// that kind, and `POST /events` — the route it called — never queues a webhook, so pressing
+// it notified nobody. It also disabled itself permanently, so a person who kept editing
+// (which is what happened the first time a human used this) could not mark a second
+// checkpoint, and the agent read a `done` marker mid-log with fresh edits trailing it.
+//
+// The IDEA it was built for survives: an intent note is the one thing auto-diff cannot
+// recover, since "added extra budget" and "cut 6000 to 900, added a 5000 line" describe the
+// same edit. That returns when it is wired to the webhook so it actually notifies, and when
+// a second person has used a document. `kind: "done"` stays ACCEPTED by the API — existing
+// histories contain them and `?since=` consumers must not break.
 
-/**
- * The exit interaction, which the design doc calls the strongest moment in the product:
- * the person says they are finished and, optionally, what they changed. It was a native
- * `prompt()`, which Chrome renders as "vaiven.owncompute.com says:" — the browser
- * affordance most associated with scams, unstyled and untranslatable, on the one page
- * whose whole problem is convincing a stranger it is safe.
- */
-const doneDialog = document.createElement("dialog");
-const doneNote = document.createElement("textarea");
-{
-	const head = el("div", "panel-head");
-	const cancel = el("button", null, "Not yet");
-	cancel.addEventListener("click", () => doneDialog.close());
-	head.append(el("h2", null, "Send this back"), cancel);
-
-	const body = el("div", "panel-body");
-	const label = el("label", "field-label", "Anything you want to say about what you changed?");
-	label.setAttribute("for", "vaiven-done-note");
-	doneNote.id = "vaiven-done-note";
-	doneNote.rows = 3;
-	doneNote.placeholder = "Optional";
-
-	const send = el("button", "primary", "Send");
-	send.addEventListener("click", () => doneDialog.close("send"));
-	const actions = el("div", "panel-actions");
-	actions.append(send);
-
-	body.append(label, doneNote, actions);
-	doneDialog.append(head, body);
-	document.body.append(doneDialog);
-}
-
-doneButton.addEventListener("click", async () => {
-	doneNote.value = "";
-	doneDialog.showModal();
-	doneNote.focus();
-	const answered = await new Promise((resolve) =>
-		doneDialog.addEventListener("close", () => resolve(doneDialog.returnValue === "send"), { once: true }),
-	);
-	if (!answered) return;
-
-	const note = doneNote.value.trim();
-	writer.flush("done");
-	await api("/events", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ events: [{ kind: "done", note }] }),
-	}).catch(() => {});
-
-	doneButton.disabled = true;
-	doneButton.textContent = "Sent";
-	setStatus("Sent — thank you", "clean");
-});
 
 // ------------------------------------------------------------------------- unload
 

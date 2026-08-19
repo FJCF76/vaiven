@@ -239,6 +239,25 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   (`src/events.ts:335`) and changes what `?since=` consumers can rely on.
   **Priority:** P3
 
+- **`postKey` does not honour `mint_read_key`.** The tenant switch reads as "no public URLs
+  for this tenant" and is enforced at document creation only (`src/routes/api.ts:258`);
+  `POST /api/docs/<id>/keys` with `{"role":"read"}` mints a working public read key on a
+  flag-off tenant, measured. As of this release the response also hands back the resulting
+  `/r/` URL, so the gap is now advertised rather than merely present.
+
+  **How to apply:** decide which it is. Either `postKey` refuses when the flag is 0 and the
+  role is read, with a hint naming the CLI switch, or the flag is documented as a
+  creation-time default and not tenant policy. Do not leave it reading as policy while one of
+  the two paths ignores it.
+  **Priority:** P2
+
+- **`loadConfig(env)` accepts an `env` parameter and ignores it.** `required()`
+  (`src/config.ts:66`) reads `process.env` directly, so the parameter is decoration. A caller
+  that passes an env object gets the ambient one and no error. Found while writing
+  `test/urls.test.ts`, which now builds a `Config` literal instead — mutating `process.env`
+  from a test file would leak into every other file in the same bun process.
+  **Priority:** P3
+
 ## Shell
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`

@@ -15,12 +15,44 @@ import { newKeyId } from "./ids.ts";
 
 // ------------------------------------------------------------------------- key material
 
+/**
+ * A key that the type system will not let you serialize by accident.
+ *
+ * Three times in three releases the same defect shipped: a response mentioned a key and the
+ * caller had to build the URL for it by hand. Twice an agent absorbed it; the third time a
+ * person received a dead link. The invariant was written at the top of `urls.ts` before any
+ * of them, and being written did not help.
+ *
+ * A source scan was considered and rejected — `const { plaintext } = ...` walks straight
+ * through one, and the guard is defeated by renaming a variable. This is the version the
+ * compiler enforces: `KeyMaterial` is not assignable to `string`, so `tsc --noEmit` (already
+ * in CI) fails on every attempt to put one in a response body. `reveal()` is the single
+ * documented way out and every call to it is a place to look.
+ *
+ * `toJSON` matters as much as the type: if one ever does reach a body, the failure mode is a
+ * redacted string rather than a leaked secret.
+ */
+export class KeyMaterial {
+	constructor(private readonly value: string) {}
+	/** The only way to the plaintext. Call it where a URL or a response is being built, and
+	 *  nowhere else. */
+	reveal(): string {
+		return this.value;
+	}
+	toJSON(): string {
+		return "[redacted]";
+	}
+	toString(): string {
+		return "[redacted]";
+	}
+}
+
 /** 32 random bytes, base64url. The plaintext exists only in the minting response. */
-export function mintKey(): { plaintext: string; hash: string } {
+export function mintKey(): { plaintext: KeyMaterial; hash: string } {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
 	const plaintext = Buffer.from(bytes).toString("base64url");
-	return { plaintext, hash: hashKey(plaintext) };
+	return { plaintext: new KeyMaterial(plaintext), hash: hashKey(plaintext) };
 }
 
 export function hashKey(plaintext: string): string {
@@ -259,7 +291,7 @@ export function insertDocKey(
 	docId: string,
 	label: string,
 	role: "read" | "write",
-): { id: string; plaintext: string; label: string; role: "read" | "write" } {
+): { id: string; plaintext: KeyMaterial; label: string; role: "read" | "write" } {
 	const { plaintext, hash } = mintKey();
 	const id = newKeyId();
 	db.query(
