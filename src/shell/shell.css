@@ -167,7 +167,15 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
-.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; }
+/* The consent notice is the one sentence whose entire job is to be read and believed. Left
+   uncapped it set at 184 characters per line on a 1280px viewport, roughly two and a half
+   times a readable measure, so it scanned as boilerplate. Capped, it wraps to two lines and
+   the brand mark falls at the end of a short line rather than trailing a very long one. */
+.disclosure span { max-width: 60ch; }
+/* Aligned to the BOTTOM of the wrapped notice, not its first baseline. Baseline-aligned it
+   parked beside line one with the rest of the bar empty to its right, reading as a stray
+   word; at the foot of the block it reads as a signature on the statement. */
+.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; }
 .disclosure {
 	padding: var(--space-2) var(--gutter);
 	font-size: 12px;
