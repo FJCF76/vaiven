@@ -194,6 +194,139 @@ then priority. Completed items move to the bottom.
   10x reframe — the sandbox host, CSP and quota machinery that makes it safe already exists);
   publishing the CLI.
 
+## API
+
+All three below were reported by a third-party agent after building two documents against
+v0.2.5.1 on 2026-08-19, then verified against the source.
+
+- **`POST /api/docs/:id/keys` returns no URL, so the agent has to build one — and got it
+  wrong.** It returns `{id, label, role, key}`. `view_url` is assembled in `src/urls.ts:30`
+  as `${appOrigin}/d/${docId}#k=${encodeURIComponent(key)}` and attached only at document
+  creation. The reporter wrote `#<key>` instead of `#k=<key>` and **sent a person a dead
+  link**.
+
+  **Why:** A12 states the invariant outright — *never make the agent construct a URL* — and
+  `guide.md` actively routes agents here for the mint-a-named-key-per-person workflow, which
+  is the one place the invariant has no enforcement. This is the third instance of the same
+  defect class in three releases (`$HOST` in the instructions, `vaiven tenant create` in the
+  error hints, now `#k=` at key-mint), and the first where the failure reached a human rather
+  than an agent.
+
+  **How to apply:** return `view_url` from the mint response, then add a guard that fails the
+  build when any response body containing a key lacks a matching URL. The guard is the point —
+  it converts a stated invariant into a checked one. Without it there will be a fourth.
+  **Priority:** P1
+
+- **`/r/<read_key>.json` sends no ETag.** `src/routes/read.ts` has no ETag logic;
+  `GET /api/docs/:id` does, and the composite `W/"<version>.<content_version>"` round-trips
+  directly as `If-Match` (measured: echoed verbatim, HTTP 200). `/r/` is the I2 floor endpoint
+  — bare GET, no headers, nothing installed — so an agent polling it re-transfers the whole
+  payload every time with no conditional path.
+
+  Lower urgency than it sounds: `mint_read_key` defaults to 0 per A13, so `/r/` is off for
+  every tenant on this instance today and is not the read an agent actually calls.
+  **Priority:** P3
+
+- **`Vaiven.log(kind, payload)` takes a `kind` that is not the kind.** `src/shell/shell.js:409`
+  hardcodes `{kind: "note", note: label}`, so the caller's `kind` arrives as note *text*.
+  `guide.md:113-115` documents the wart honestly, but an API whose first parameter lies is a
+  trap documentation can only mitigate.
+
+  **How to apply:** add `Vaiven.note(text, payload)` as the honest name, keep `log()` as an
+  alias, document only `note()`. Do **not** rename outright — `content` is served from the
+  database rather than rebuilt, so a rename breaks every published document already calling
+  `log()`. Do **not** honour arbitrary kinds either: that widens `ANNOTATION_KINDS`
+  (`src/events.ts:335`) and changes what `?since=` consumers can rely on.
+  **Priority:** P3
+
+## Shell
+
+- **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
+  reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
+  Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
+  use a document, 2026-08-19, whose reaction was **"nobody sent me a link"** — they had opened
+  their own document. The sentence names a party the reader cannot identify, so the one claim
+  whose entire job is to be believed is the one they cannot check.
+
+  Three separate claims are welded into one line (who you are recorded as, who receives it,
+  who else can edit), and the bare "Vaivén." trailing the third reads as a fragment rather
+  than a signature. The read-only variant on line 509 packs the same way, though without the
+  false presupposition.
+
+  **Why:** this is the consent notice. Design decision 18 accepted it as "cheap now, worst
+  thing to retrofit" — the person never chose the name they are labelled with, their
+  *corrections* are retained (`from` holds the value they thought better of), and in
+  automatic mode the agent never knows the disclosure is happening, so the shell is the only
+  thing that can make it. A disclosure that confuses its reader has not disclosed anything.
+
+  **How to apply:** simplify, but do not simplify into a lie — the constraint that produced
+  this sentence is that every clause must stay true for a read-key holder, a write-key
+  holder, and the author opening their own document. Likely shape: drop the sender, name the
+  audience the reader can verify (anyone with the link, plus the agent that made the
+  document), and split the claims. Re-check the read-only variant in the same pass.
+  **Priority:** P2
+
+- **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
+  produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →
+  `Cliene` → `Clien` → `Clienter` → `Cliente` → `Cliente1`. A1 already coalesces per field per
+  flush, but the flush fires when the write pipeline builds a PUT, so a pause mid-word ends a
+  batch. This works directly against `next_since`, whose reason for existing is to stop
+  histories crowding out an agent's context.
+
+  Nobody reported it for two releases because **an agent reading its own diffs never types
+  with backspaces**. Only a human does, and the human has no channel to report it.
+
+  **How to apply — coalesce at READ time, not write time.** The tempting fix is a wider flush
+  window, and it is wrong: A1 chose eager flushing deliberately because people close tabs
+  rather than tab out, which is why `pagehide` and `sendBeacon` exist. Widening the window
+  trades log cleanliness against durability. Read-time collapse dissolves that — persist
+  eagerly, present coalesced — and existing histories benefit with nothing discarded at ingest.
+
+  Collapse consecutive events sharing `actor` and `field`, keeping the **original `from`** and
+  the **final `to`**; intermediates carry nothing. Precedent exists: >10 array changes already
+  collapse to one summary event.
+
+  **Boundary: use A2's editing session (a gap of 10+ minutes), NOT a `done` event.** A third
+  party proposed the `done` boundary; it makes log readability depend on a button people do
+  not reliably press. In the session that produced this finding the button was pressed once,
+  with an empty note, and editing continued afterwards — the boundary would have landed
+  mid-session. The session gap is time-based, needs no human cooperation, and is already an
+  accepted concept here.
+
+  Known edge, worth stating so nobody files it later as a bug: a burst spanning two polls
+  collapses into two coherent events rather than one. No information lost, no duplication,
+  just less compression.
+  **Priority:** P2
+
+- **Verified: `kind: "done"` reaches no consumer, and pressing the button notifies nobody.**
+  `src/events.ts:335` lists it in an allowlist and `src/routes/writes.ts` stores it. Nothing
+  else in the codebase reads it. `postEvents` — the route the button calls — never queues a
+  webhook, so the one thing that could justify a control ("the human is finished, look now")
+  is the one thing it does not do. `writer.flush("done")` is not unique either; `pagehide` and
+  the debounce both flush anyway.
+
+  The button also disables itself permanently (`shell.js:641-642`), so a person who keeps
+  editing — as happened on 2026-08-19 — cannot mark a second checkpoint, and the agent reads a
+  `done` marker mid-log with fresh edits trailing it. The note is `placeholder = "Optional"`
+  and was left empty, so what reached the agent was a bare flag carrying no more than the
+  timestamp already did.
+
+  **Recorded as a finding, not a decision.** The case it was built for (A10, decision 19) is
+  the two-party asynchronous one: the editor is not the agent's principal, and only a note
+  recovers intent the diff cannot — E2 showed "added extra budget" and "cut 6000 to 900, added
+  a 5000 line" describing the same edit. That case has never occurred; the kill criterion is
+  still 0 of 10. If it is cut, cut the button and keep the idea for a note wired to the
+  webhook, so it actually notifies.
+  **Priority:** P3
+
+- **A malformed link fragment reports as missing.** `src/shell/shell.js:42-43` says *"This
+  link is incomplete. The part after the # is missing…"* when the fragment is present but does
+  not parse as `k=…`. Say "this link looks damaged" instead, or accept a bare key when the
+  remainder looks like one. Turns a dead end into a recovery. Genuinely optional — the current
+  message is clear, actionable and blames nobody, which is why it should stay close to what it
+  is.
+  **Priority:** P4
+
 ## Product
 
 - **The sender is never named.**
@@ -215,10 +348,14 @@ then priority. Completed items move to the bottom.
 
 ## Documentation
 
-- **The README's test count is written by hand and has drifted twice.**
-  **Priority:** P3
-  Every time tests are added it becomes a lie, and it is the kind of lie that makes a reader
-  distrust the rest of the file. Generate it, drop the number, or assert it in a test.
+- **The unit-test count in `README.md` is a hand-maintained number.** It said 233 when the
+  suite had 235; it had drifted across two releases before anyone read that line. A static
+  guard would be wrong, because many tests are generated inside loops (172 literal `test(`
+  calls produce 235 tests) — `test/config.test.ts:66` wraps one `test()` in a `for` over
+  five bad hostnames, and `test/guide.test.ts:52` does the same over five helper members.
+  Counting the source does not answer the question. Either parse `bun test` output in a
+  guard, or drop the number.
+  **Priority:** P4
 
 - **`upstream_error` (502) is declared and never thrown.**
   **Priority:** P3
@@ -247,16 +384,47 @@ then priority. Completed items move to the bottom.
   and are the model to follow.
 - **CORS on `/r/` is still listed as an open question** and was decided and shipped.
 
-## Docs
+- **`guide.md` never says the iframe canvas is white.** `src/shell/shell.css:205` sets
+  `background: #fff` and explains why; no agent will ever read that file, and `guide.md`
+  mentions it zero times. The reporter wrote `@media (prefers-color-scheme: dark)` to lighten
+  the text, left the background alone, and shipped near-white text on white to a real person.
 
-- **The unit-test count in `README.md` is a hand-maintained number.** It said 233 when the
-  suite had 235; it had drifted across two releases before anyone read that line. A static
-  guard would be wrong, because many tests are generated inside loops (172 literal `test(`
-  calls produce 235 tests) — `test/config.test.ts:66` wraps one `test()` in a `for` over
-  five bad hostnames, and `test/guide.test.ts:52` does the same over five helper members.
-  Counting the source does not answer the question. Either parse `bun test` output in a
-  guard, or drop the number.
-  **Priority:** P4
+  **P1, not cosmetic.** The author cannot self-detect this: they test in light mode, it looks
+  correct, and the person who suffers it has no channel back. `/r/` exists to close exactly
+  that asymmetry and does not cover rendering. In the 2026-08-19 session it surfaced only
+  because the human typed "el contraste está mal" into a notes field; had they closed the tab,
+  the agent would have kept shipping unreadable pages.
+
+  One sentence in section 2: the frame you publish into is always white, in every theme; if
+  you want a dark page, paint `html` and `body` yourself.
+  **Priority:** P1
+
+- **No curl example for `PUT /api/docs/:id/state`.** The four blocks in `guide.md` cover
+  create (53), content (73), `/r/` (211) and webhook (245). State is the endpoint an agent
+  calls most and the only one with an `If-Match` precondition; the reporter guessed
+  `{"state": {…}}` and said so.
+
+  The absence caused a second, worse failure: the same reviewer reported "no ETag on reads" as
+  a finding, having read the JSON body and never the response headers. The ETag is there and
+  round-trips. **A missing example made a careful reviewer misdiagnose a working feature.**
+  Show `-H "If-Match: $ETAG"` echoing the header verbatim, which closes both gaps in four
+  lines.
+  **Priority:** P2
+
+- **`guide.md` does not say the iframe has no viewport.** `shell.css:61-62` records that the
+  shell scrolls and the frame never does, sized to content height. The consequence is stated
+  nowhere: `position: sticky`, `position: fixed`, `100vh` and scroll-driven effects do not work
+  inside a document. The reporter shipped a sticky table header that pins to nothing. One line
+  in the "two things to know" block, beside the no-network warning — same category, a
+  capability an author would reasonably assume and silently does not have.
+  **Priority:** P2
+
+- **The array-label rule is undocumented.** `guide.md:199` and `:337` tell authors to leave
+  `_vid` alone, but never state how an event gets its name: `labelOf` (`src/events.ts:162`)
+  takes the element's **first string-valued property**, truncated to 40 characters. That rule
+  is why a log stays readable a week later, and authors should know it so they put the
+  human-meaningful field first when designing their state shape.
+  **Priority:** P2
 
 ## Completed
 
