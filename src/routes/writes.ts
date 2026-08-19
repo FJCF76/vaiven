@@ -577,7 +577,15 @@ export async function putContent(
 	forgetPrepared(id);
 
 	return json(
-		{ content_version: outcome.contentVersion, version: outcome.version, state_keys: outcome.keys },
+		{
+			content_version: outcome.contentVersion,
+			version: outcome.version,
+			state_keys: outcome.keys,
+			// The manual says the server checks your page when you publish and tells you in
+			// `warnings`. It did not: warnings appeared only on a later read, so an agent that
+			// published and saw a clean response concluded it was clean.
+			warnings,
+		},
 		200,
 		{ etag: etagFor(outcome.version, outcome.contentVersion) },
 	);
@@ -643,6 +651,9 @@ export async function postKey(
 	id: string,
 ): Promise<Response> {
 	requireCap(scope, "keys.mint", id);
+	// Every other write route budgets itself; this one did not, and each response is now three
+	// times as key-bearing as it was.
+	enforceRate(`w:${scope.tenantId}`, RATES.write, "writes");
 	loadDoc(db, scope, id);
 	const body = await readJson(request, 8192, "request");
 

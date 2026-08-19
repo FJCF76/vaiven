@@ -103,7 +103,7 @@ argument was never a kind: it travelled as the note text and the event always re
 ## What the person sees around your app
 
 A bar you do not control and cannot suppress: the title, the name their edits are recorded
-under, save status, a **Done for now** button, and a panel showing them their own event log.
+under, save status, and a panel showing them their own event log.
 That bar is where they are told their edits are being recorded, because in automatic mode
 you never know it is happening — so you cannot be the one to tell them.
 

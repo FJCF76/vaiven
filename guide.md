@@ -276,8 +276,10 @@ no `name`. Nothing is ever changed silently, so an empty array means what it say
 **Echo `next_since` back as `since` on your next read.** Without it you re-read the whole
 history every turn and by the tenth turn nothing else fits in your context.
 
-`kind: "done"` means the person pressed **Done for now** and said what they changed. It is
-the one event that carries intent rather than mechanics; read it first.
+`kind: "done"` is a checkpoint someone chose to mark. Nothing in the shell emits one today —
+the button that did notified no one and nothing consumed it, so it was removed — but the kind
+is still accepted on `POST /api/docs/<id>/events`, older documents contain them, and your own
+app can append one with `Vaiven.note`. Read the log as a stream; do not wait for a marker.
 
 Events of `kind: "error"` mean the JavaScript **you** published threw in their browser. You
 will not see it any other way.

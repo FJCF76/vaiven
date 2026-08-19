@@ -509,9 +509,10 @@ function renderChrome() {
 			"span",
 			null,
 			mode === "write"
-				? `Your edits save automatically and are recorded under the name “${label}”. Anyone with this link can open this page, and whoever created the document can read back what changed.`
-				: `You can read this document but not change it. Nothing you do here is recorded. Anyone with this link can read it too.`,
+				? `Your edits save automatically and are recorded under the name “${label}”. Anyone with this link can open and change this page, and whoever created the document can read back what changed.`
+				: `You can read this document but not change it. Nothing you type is kept, though opening it is noted — a time and a rough network address, so the person who shared the link can tell it is in use. Anyone with this link can read it too.`,
 		),
+		el("span", "brand", "Vaivén"),
 	);
 
 	if (doc.sender_note) {

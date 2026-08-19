@@ -239,3 +239,41 @@ this tenant" is enforced on document creation and not on minting, so a read-role
 flag-off tenant yields a working public URL. This release advertises that URL. It is a policy
 question, not a bug to fix mid-cycle: either `postKey` refuses, or the flag is documented as a
 creation-time default rather than tenant policy. Filed in `TODOS.md`.
+
+## The two changes a person actually sees
+
+Both arrived when cycles 1 and 2 merged, and neither was in the original scope, so they are
+recorded here rather than only in a source comment.
+
+**The "Done for now" button is removed.** It appended `{kind:"done"}` to the log and did
+nothing else: no consumer reads that kind, and `POST /events` — the route it called — never
+queues a webhook, so pressing it notified nobody. It also disabled itself permanently, so the
+first person who actually used the system pressed it, kept editing, and could not mark a
+second checkpoint; the agent read a `done` marker mid-log with fresh edits trailing it.
+
+`kind: "done"` stays **accepted** by the API. Existing histories contain them, `?since=`
+consumers must not break, and an author's own app can still append one. What was removed is
+the control that promised finality it could not deliver.
+
+The idea survives and is not dead: an intent note is the one thing auto-diff cannot recover,
+since "added extra budget" and "cut 6000 to 900, added a 5000 line" describe the same edit. It
+returns when it is wired to the webhook so it actually notifies, and after a second person has
+used a document. This supersedes decision 19 in `docs/designs/vaiven-v1.md`, which specified
+the button and called it "the strongest moment in the product." It was, in design. In use it
+was inert.
+
+**The consent disclosure no longer presupposes a sender.** It read "shared with whoever sent
+you this link"; the first real user opened their own document and answered "nobody sent me a
+link". Every clause now has to hold in three cases at once — a stranger sent a write link, a
+stranger sent a read link, and the author opening their own document — and it was that third
+case the old wording forgot.
+
+Two facts were nearly lost in the rewrite and were restored during review: that anyone holding
+the link can **change** the document, not merely open it, which is the fact a person needs in
+order to decide whether to pass the link on; and the Vaivén mark, so the persistent notice
+still names who is doing the recording.
+
+The read-only variant also stopped claiming "nothing you do here is recorded." That was false:
+`touchKeyById` records `last_seen` and a coarse address list on every resolve, and
+`vaiven key list` surfaces the distinct-IP count. It exists so a leaked link is observable at
+all, which is worth keeping — and worth disclosing rather than denying.

@@ -80,7 +80,7 @@ describe("canvas detection is precise about which selector paints", () => {
 		);
 
 	test("painting the canvas, in all the shapes people write it", async () => {
-		for (const selector of ["body", "html", "body.dark", "html,body", "body:has(.x)", "html > body"]) {
+		for (const selector of ["body", "html", ":root", "body.dark", "html,body", "body:has(.x)", "html > body"]) {
 			expect(await warns(`<style>${dark} ${selector}{background:#111} }</style>`)).toBe(false);
 		}
 	});
@@ -92,8 +92,26 @@ describe("canvas detection is precise about which selector paints", () => {
 		}
 	});
 
-	test("a background set outside the dark block still counts", async () => {
-		expect(await warns(`<style>body{background:#111}${dark} .x{color:#eee} }</style>`)).toBe(false);
+	test("a light canvas painted globally does NOT excuse a dark block that only sets color", async () => {
+		// This test asserted the opposite until an adversarial review pointed out that it pinned
+		// the miss: `body{background:#fff}` plus a dark block setting `color:#eee` IS the
+		// reported bug — a white canvas with light text — and "is a background painted anywhere"
+		// calls it correct.
+		expect(await warns(`<style>body{background:#fff;color:#111}${dark} body{color:#eee} }</style>`)).toBe(true);
+	});
+
+	test(":root counts as the canvas", async () => {
+		// :root IS the html element, and is where custom properties live, so it is the form an
+		// agent is most likely to write. Excluding it flagged correct pages.
+		expect(await warns(`<style>${dark} :root{background:#111} }</style>`)).toBe(false);
+	});
+
+	test("theming done in JavaScript is not read as CSS", async () => {
+		expect(await warns(`<script>matchMedia("(prefers-color-scheme: dark)")</script>`)).toBe(false);
+	});
+
+	test("prose about dark mode is not read as CSS", async () => {
+		expect(await warns(`<p>Use prefers-color-scheme: dark for themes</p>`)).toBe(false);
 	});
 
 	test("the idiomatic custom-property pattern is not flagged", async () => {
@@ -110,12 +128,65 @@ describe("canvas detection is precise about which selector paints", () => {
 		expect(await warns(`<style>@supports (color:red){${dark} body{background:#111} }}</style>`)).toBe(false);
 	});
 
-	test("4 MB of hostile content does not stall the event loop", async () => {
-		// `body ` repeated with no braces made the original regex rescan the remaining
-		// megabytes from every candidate. Publishing is on the request path.
-		const hostile = `${dark}}` + "body ".repeat(800_000);
-		const started = performance.now();
-		await prepareContent(`<!doctype html><html><head></head><body>${hostile}</body></html>`, "/*h*/");
-		expect(performance.now() - started).toBeLessThan(2000);
+	test("no content shape stalls the event loop", async () => {
+		// Two implementations were quadratic here, on OPPOSITE shapes, and the first regression
+		// test pinned only the first shape so the second shipped green. `prepareContent` runs on
+		// the UNAUTHENTICATED GET /c/:id path in a single-threaded process, so a stall is not
+		// slow for one reader, it is downtime for every tenant. Measured before the fix: 903ms
+		// at 400KB of `{`, extrapolating to ~90s at the 4MB content cap.
+		const shapes = [
+			"{".repeat(4 * 1024 * 1024), // many opens, one close — the second implementation
+			"{}".repeat(2 * 1024 * 1024), // many complete rules
+			"body ".repeat(800_000), // many selector tokens, no braces — the first implementation
+			"{".repeat(2 * 1024 * 1024) + "}".repeat(2 * 1024 * 1024), // deep nesting
+		];
+		for (const payload of shapes) {
+			const started = performance.now();
+			await prepareContent(
+				`<!doctype html><html><head></head><body><style>${dark}${payload}}</style></body></html>`,
+				"/*h*/",
+			);
+			expect(performance.now() - started).toBeLessThan(2000);
+		}
+	});
+
+	test("a document full of base64 data: URIs is not told it uses viewport units", async () => {
+		// `+` `/` `=` are word boundaries, so `…/3vh+…` matched `\b3vh\b`. Measured 1-2 in 10
+		// sample documents before the scan was narrowed to CSS — and the guide instructs authors
+		// to embed assets as data: URIs, so the collision was designed in.
+		const b64 = Buffer.from(crypto.getRandomValues(new Uint8Array(400_000))).toString("base64");
+		const { warnings } = await prepareContent(
+			`<!doctype html><html><head></head><body><img src="data:image/png;base64,${b64}"></body></html>`,
+			"/*h*/",
+		);
+		expect(warnings.map((w) => w.code)).not.toContain("no_viewport");
+	});
+});
+
+describe("a canvas that is already dark is not warned about", () => {
+	const dark = "@media (prefers-color-scheme: dark){";
+	const warns = async (fragment: string) =>
+		(await prepareContent(`<!doctype html><html><head></head><body>${fragment}</body></html>`, "/*h*/")).warnings.some(
+			(w) => w.code === "dark_mode_no_background",
+		);
+
+	test("a dark canvas painted for both themes is correct, in every literal form", async () => {
+		for (const colour of ["#111", "#111111", "rgb(17,17,17)", "black"]) {
+			expect(await warns(`<style>body{background:${colour}}${dark} body{color:#eee} }</style>`)).toBe(false);
+		}
+		expect(await warns(`<body style="background:#111"><style>${dark} .x{color:#eee} }</style>`)).toBe(false);
+	});
+
+	test("a LIGHT canvas painted for both themes is the bug, in every literal form", async () => {
+		for (const colour of ["#fff", "#ffffff", "rgb(255,255,255)", "white"]) {
+			expect(await warns(`<style>body{background:${colour}}${dark} body{color:#eee} }</style>`)).toBe(true);
+		}
+	});
+
+	test("an unreadable colour warns rather than staying quiet", async () => {
+		// A spurious warning costs a sentence; a missed one costs a person an unreadable page.
+		expect(await warns(`<style>body{background:color-mix(in srgb, red, blue)}${dark} body{color:#eee} }</style>`)).toBe(
+			true,
+		);
 	});
 });

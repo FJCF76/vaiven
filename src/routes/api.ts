@@ -360,6 +360,9 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 			// in it, and the agent should not have to issue a second read to learn which
 			// keys it just created.
 			state_keys: Object.keys(state as Record<string, unknown>).filter((key) => key !== "_vid"),
+			// Same reason as PUT /content: the manual promises the server tells you what it had
+			// to alter or could not understand AT PUBLISH TIME, and creation is a publish.
+			warnings,
 			...docUrls(config, id, { shell, read }),
 			...(webhookSecret ? { webhook_secret: webhookSecret } : {}),
 			untrusted: UNTRUSTED,

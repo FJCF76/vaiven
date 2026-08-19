@@ -174,7 +174,15 @@ if (group === "tenant" && action === "rotate-key") {
 if (group === "key" && action === "add") {
 	const docId = positional(0) ?? die("vaiven key add <doc-id> --label \"Marta\" [--role write]");
 	const label = flag("label") ?? die("A key needs a label — it becomes the actor on everything written with it.");
-	const role = (flag("role", "write") === "read" ? "read" : "write") as "read" | "write";
+	// This used to be `=== "read" ? "read" : "write"`, so `--role reader`, `--role r` and
+	// `--role admin` all silently minted a WRITE key. The HTTP route rejects a bad role with a
+	// 400; the CLI is how an operator hands a real person a link, and it failed open toward
+	// MORE privilege.
+	const requestedRole = flag("role", "write");
+	if (requestedRole !== "read" && requestedRole !== "write") {
+		die(`Unknown role ${JSON.stringify(requestedRole)}. Use --role read or --role write.`);
+	}
+	const role = requestedRole as "read" | "write";
 	if (!db.query("SELECT 1 FROM docs WHERE id = ?").get(docId)) die(`No document ${docId}.`);
 
 	const minted = writeTx(db, () => insertDocKey(db, docId, label, role));
