@@ -39,8 +39,18 @@ export const RATES = {
  * stores nothing. A title that comes back shorter than it was sent is the kind of thing
  * nobody notices until the document is in front of someone else.
  */
+/** Characters with no business in a name, a title or a note, and a long history of being used
+ *  to make text render as something other than what it says: the bidirectional overrides and
+ *  isolates, the zero-width spaces and joiners, the byte-order mark, and the C0/C1 controls
+ *  apart from tab and newline. A label goes into the shell's consent notice, so a right-to-left
+ *  override in it reverses the sentence a stranger is being asked to believe. */
+const INVISIBLE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gu;
+
 export function requireWithin(value: unknown, limit: number, field: string, what: string): string {
-	const text = typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+	const raw = typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+	// Stripped BEFORE the length check, so a caller cannot spend the budget on characters that
+	// will not survive to be displayed, and so `actual` reports what would have been stored.
+	const text = raw.replace(INVISIBLE, "");
 	const length = [...text].length;
 	if (length > limit) {
 		fail("too_large", `That ${what} is longer than the limit.`, {
@@ -51,6 +61,21 @@ export function requireWithin(value: unknown, limit: number, field: string, what
 		});
 	}
 	return text;
+}
+
+/** A key label, which the shell renders inside quotation marks in the consent notice.
+ *
+ *  `requireWithin` handles the length and the invisibles. This also removes the double-quote
+ *  characters the notice uses as its own delimiters, straight and curly, because a label that
+ *  can close its own quote can continue in the notice's voice: `Alice”. Your edits are private.
+ *  “` reads, in the shell's trusted chrome, as a promise this system does not make. The shell
+ *  renders the name in its own element as well, so this is the second of two locks rather than
+ *  the only one — but it is the one that removes the vector instead of making it visible.
+ *
+ *  Straight apostrophes and single quotes are LEFT ALONE. They occur in real names (O'Neill,
+ *  D'Angelo) and they are not what the notice is delimited with. */
+export function requireLabel(value: unknown, field: string): string {
+	return requireWithin(value, LIMITS.labelChars, field, "key label").replace(/["\u201c\u201d\u201e\u201f\u2033\u2036]/g, "");
 }
 
 // ---------------------------------------------------------------------- the client IP

@@ -184,15 +184,46 @@ then priority. Completed items move to the bottom.
   regression guards over guide text. Unfrozen by evidence, not by preference. See
   `docs/designs/agent-onboarding.md`.
 
-- **The instance-model decision must not ride in on a docs branch.**
+- **Purpose and completion criterion are undeclared.**
   **Priority:** P1
-  `docs/designs/vaiven-v1.md:950` ("self-hostable by others, or one instance?") needs its own
-  one-page decision. Note for whoever takes it: "self-hosting by cloning" makes adoption
-  **unobservable**, and the kill criterion is a count — if usage cannot be counted the criterion
-  can never fire, and the project neither succeeds nor stops. Alternatives never costed:
-  invite-gated `POST /api/tenants`; a public demo tenant with short expiry and tiny quota (the
-  10x reframe — the sandbox host, CSP and quota machinery that makes it safe already exists);
-  publishing the CLI.
+  The recorded kill criterion — ten documents used by non-author humans within 30 days —
+  assumes **adoption is the measure**. It is not. This is a theoretical exercise, not a product
+  looking for users, and the criterion was imported from a template that does not describe the
+  work. Until purpose and completion criterion are written down, no instance-model decision is
+  meaningful.
+
+  Consequences, so nobody re-derives them:
+  - The earlier note here argued that self-hosting by cloning makes adoption unobservable and
+    therefore disables the criterion. If adoption is not the measure, unobservable adoption is
+    not a defect, it is irrelevant. The instance model was only ever load-bearing as a way of
+    counting users.
+  - **Do not propose adoption metrics as a workaround.** Anything that makes usage countable is
+    solving for a goal this project does not have.
+  - The question worth a one-pager is *what is this for, and what would count as finished* —
+    not *how should this be distributed*. The author has asked to be in the room for that one,
+    so do not run it unattended.
+  - Once purpose is declared, the instance model stops being a decision and becomes a
+    consequence. For an exercise, cloning is fine.
+
+  **The concrete contradiction, so it is on the record rather than in a review comment:**
+  `docs/designs/agent-onboarding.md` still defines success as *"tenant keys issued to non-author
+  humans, and documents those humans edited"*, freezes work *"until a non-author human has used
+  a document"*, and cut Approach C for serving *"an audience the kill criterion does not count"*.
+  That is adoption as the measure, in a committed design doc, contradicting this entry. Both are
+  left standing; the disagreement is marked in that document and is not settled by precedence.
+
+  **The procedural half still holds: this must not ride in on a docs branch.** It is how the
+  instance-model claim got asserted as settled in `docs/designs/agent-onboarding.md` without
+  anyone deciding it.
+
+  Where this stands, as of 2026-08-20: the question the exercise set out to answer — can an
+  agent publish an editable surface and read back an attributed diff of what a person changed —
+  has evidence behind it. Apps published, content republished repeatedly with state intact,
+  concurrent writes from both sides without collision, the capability boundary verified with
+  live 403s, and a defect review that mostly held up against the code. The open question is
+  therefore **is there anything this exercise still needs to answer**, and if not it closes for
+  having arrived rather than being killed for lack of users. The current criterion cannot reach
+  that ending.
 
 ## API
 
@@ -282,30 +313,73 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
 ## Shell
 
-- **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
-  reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
-  Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
-  use a document, 2026-08-19, whose reaction was **"nobody sent me a link"** — they had opened
-  their own document. The sentence names a party the reader cannot identify, so the one claim
-  whose entire job is to be believed is the one they cannot check.
+- **The consent notice runs the full width of the bar, at about 184 characters per line.**
+  **Priority:** P4
+  That is roughly two and a half times a readable measure (45-75), so the one sentence whose
+  job is to be read and believed is set at a width that encourages skipping.
 
-  Three separate claims are welded into one line (who you are recorded as, who receives it,
-  who else can edit), and the bare "Vaivén." trailing the third reads as a fragment rather
-  than a signature. The read-only variant on line 509 packs the same way, though without the
-  false presupposition.
+  **Measured 2026-08-20, and the framing above is partly wrong.** "184 characters per line" is
+  only true at 1280 and above, where the notice sets on ONE line. The 45-75 measure guidance is
+  about the return sweep in multi-line reading, and a single line has no return sweep, so it
+  does not bite there. It does not bite at 375 either, where the notice wraps to three lines of
+  about 61 characters — inside the readable band. The actual bad zone is **768 to 1024**, where
+  it breaks into two lines of about 92 characters: long enough to lose the sweep, short enough
+  to need one. That is a much narrower problem than this entry claimed.
 
-  **Why:** this is the consent notice. Design decision 18 accepted it as "cheap now, worst
-  thing to retrofit" — the person never chose the name they are labelled with, their
-  *corrections* are retained (`from` holds the value they thought better of), and in
-  automatic mode the agent never knows the disclosure is happening, so the shell is the only
-  thing that can make it. A disclosure that confuses its reader has not disclosed anything.
+  **A `60ch` cap was tried in 0.3.0.0 and reverted by decision.** It fixed the measure and left
+  two thirds of the row empty, which read as a layout fault rather than as a deliberate column.
+  Full width is the better of the two, and the measure is a known, accepted trade — not an
+  oversight. Do not re-cap the width without solving the empty-space problem at the same time.
 
-  **How to apply:** simplify, but do not simplify into a lie — the constraint that produced
-  this sentence is that every clause must stay true for a read-key holder, a write-key
-  holder, and the author opening their own document. Likely shape: drop the sender, name the
-  audience the reader can verify (anyone with the link, plus the agent that made the
-  document), and split the claims. Re-check the read-only variant in the same pass.
-  **Priority:** P2
+  **How to apply, if it is ever worth revisiting:** shorten the sentence rather than narrowing
+  the column. 184 characters is a lot for a notice. Every clause is load-bearing and was
+  restored during review after being dropped, so cutting means deciding which fact a person can
+  do without — which is a product question, not a CSS one.
+
+  At 375px it already wraps to three lines and the brand mark drops to its own row. That case
+  looks right and should not regress.
+
+- **The disclosure is one prose strip carrying four separate claims.**
+  **Priority:** P3
+  It says, in one 184-character sentence: edits save automatically; they are recorded; they are
+  recorded under a specific name; anyone with the link can edit; the creator can read the
+  history. Five claims serialised into one low-emphasis line, which is the visual shape of terms
+  and conditions — the thing people have learned to skip.
+
+  The proposal, from the design gate, is **not** a width change: keep the full width and give the
+  claims structure instead of prose. Something like a labelled `Recorded as “{label}”` alongside
+  short separated statements, in columns on desktop and stacked on mobile. That uses the whole
+  row without a long measure and without the empty space that killed the `60ch` cap.
+
+  **Not done here because it is a product decision, not a CSS one.** Every clause is load-bearing
+  and was restored during review after being dropped; restructuring means deciding what a person
+  can be shown first, and that is the author's call. Related: the entry above, and note that this
+  would also settle the measure question by removing prose from the bar entirely.
+
+- **The disclosure is disclosure, not consent, and the difference is not currently visible.**
+  **Priority:** P3
+  Recording starts the moment the page loads. The notice tells a person that after the fact and
+  offers no acknowledgement, no deferral, and no way to open the document without being recorded.
+  For this project that may be the right trade — the whole point is that read-back does not depend
+  on anyone remembering to opt in — but the wording implies a choice the person does not have.
+  Worth deciding deliberately rather than by omission. Typography cannot fix this one.
+
+- **The "Vaivén" mark is the only product identity on the page and measures 2.21:1.**
+  **Priority:** P3
+  12px, small-caps, `opacity: 0.55` — effective `rgb(162,170,178)` on the `#f7f8f9` bar. Dark mode
+  is 2.92:1. WCAG 1.4.3 exempts logotypes from contrast minimums, so this is **not** a conformance
+  failure, and the quiet-signature intent is deliberate and recorded in the CSS.
+
+  The tension is with the project's own threat model. A10 added `sender_note` because "the recipient
+  sees an unknown domain with a visible secret in the URL, which reads like phishing." The notice
+  itself no longer names the product, so this mark is the entire answer to "what is this site?" —
+  and at 2.21:1 a stranger on an unfamiliar domain can barely see it.
+
+  Options costed: `--muted` at full opacity is 5.14:1 but as loud as the notice; `--ink` at 0.6 is
+  4.27:1; `--muted` at 0.8 is 3.44:1, which clears the 3.0 large/UI bar while staying quiet. The
+  design gate's own preference was to move the name into the chrome bar's identity area instead and
+  leave the disclosure unsigned. **Left alone: reversing a deliberate authored value is the author's
+  call, and the same over-correction was already made and reverted once on the `60ch` cap.**
 
 - **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
   produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →
@@ -472,6 +546,36 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   **Priority:** P2
 
 ## Completed
+
+- **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
+  reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
+  Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
+  use a document, 2026-08-19, whose reaction was **"nobody sent me a link"** — they had opened
+  their own document. The sentence names a party the reader cannot identify, so the one claim
+  whose entire job is to be believed is the one they cannot check.
+
+  Three separate claims are welded into one line (who you are recorded as, who receives it,
+  who else can edit), and the bare "Vaivén." trailing the third reads as a fragment rather
+  than a signature. The read-only variant on line 509 packs the same way, though without the
+  false presupposition.
+
+  **Why:** this is the consent notice. Design decision 18 accepted it as "cheap now, worst
+  thing to retrofit" — the person never chose the name they are labelled with, their
+  *corrections* are retained (`from` holds the value they thought better of), and in
+  automatic mode the agent never knows the disclosure is happening, so the shell is the only
+  thing that can make it. A disclosure that confuses its reader has not disclosed anything.
+
+  **How to apply:** simplify, but do not simplify into a lie — the constraint that produced
+  this sentence is that every clause must stay true for a read-key holder, a write-key
+  holder, and the author opening their own document. Likely shape: drop the sender, name the
+  audience the reader can verify (anyone with the link, plus the agent that made the
+  document), and split the claims. Re-check the read-only variant in the same pass.
+  **Priority:** P2
+  **Completed:** v0.3.1.0 (2026-08-20). Rewritten in 0.3.0.0 to presuppose no sender and to
+  separate the three claims; the brand mark became a signature rather than a trailing fragment
+  in 0.3.1.0. The read-only notice and the "What's recorded" panel were still carrying the
+  reported phrasing and were corrected in 0.3.1.0 as well — the original fix reached one of
+  three strings. `test/disclosure.test.ts` now pins all three together.
 
 - Two-origin deployment with blocking gates. **Completed:** v0.2.0.0 (2026-08-18)
 - Schema, ids, and one authorization decision. **Completed:** v0.2.0.0 (2026-08-18)

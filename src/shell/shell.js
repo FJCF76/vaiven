@@ -499,21 +499,41 @@ function renderChrome() {
 	// link." The sentence named a party the reader could not identify, so the one claim
 	// whose entire job is to be believed was the one they could not check.
 	//
+	// THREE strings make that claim, not one: this write notice, the read-only notice below
+	// it, and the "What's recorded" panel. The first fix corrected only this one and left the
+	// other two saying "the person who shared the link" — the exact phrasing that was
+	// reported. They were also WRONG, not just confusing: last_seen and the event log are
+	// tenant-scoped, so the party who can see them is the CREATOR, and an editor who forwards
+	// a link is not that. All three now name the same party. If you change one, change three.
+	//
 	// Every clause below has to hold in three cases at once: a stranger who was sent a write
 	// link, a stranger who was sent a read link, and the author opening their own document.
 	// That third case is what the old wording forgot. No sender is presupposed, and the
 	// claims are separated rather than welded into one line.
+	// The label is NOT interpolated into the sentence. It is chosen by whoever holds the tenant
+	// key — the same party this notice tells the reader can read their edits back — and it was
+	// only length-clamped. Spliced into the prose it could close the quote and continue in the
+	// notice's own voice: `Alice”. Your edits are private. “` reads, in trusted chrome, as a
+	// promise this system does not make. textContent stops script, not meaning.
+	//
+	// Two answers, because either alone is thin. The server now strips bidi overrides and
+	// zero-width characters (`INVISIBLE` in quota.ts), and the name renders in its own element,
+	// so anything smuggled into it stays visibly inside the name instead of becoming narration.
+	// One outer span, not three: `.disclosure` is a flex row, and separate spans would wrap as
+	// independent items and shred the sentence.
 	disclosure.hidden = false;
-	disclosure.replaceChildren(
-		el(
-			"span",
-			null,
-			mode === "write"
-				? `Your edits save automatically and are recorded under the name “${label}”. Anyone with this link can open and change this page, and whoever created the document can read back what changed.`
-				: `You can read this document but not change it. Nothing you type is kept, though opening it is noted — a time and a rough network address, so the person who shared the link can tell it is in use. Anyone with this link can read it too.`,
-		),
-		el("span", "brand", "Vaivén"),
-	);
+	const notice = el("span", null);
+	if (mode === "write") {
+		notice.append(
+			"Your edits save automatically and are recorded under the name “",
+			el("span", "actor", label),
+			"”. Anyone with this link can open and change this page, and whoever created the document can read back what changed.",
+		);
+	} else {
+		notice.textContent =
+			"You can read this document but not change it. Nothing you type is kept, though opening it is noted — a time and a rough network address, so whoever created the document can tell it is in use. Anyone with this link can read it too.";
+	}
+	disclosure.replaceChildren(notice, el("span", "brand", "Vaivén"));
 
 	if (doc.sender_note) {
 		senderEl.hidden = false;
@@ -553,7 +573,7 @@ function renderRecord(events) {
 		el(
 			"p",
 			null,
-			"Everything this document has recorded, including who made each change. The person who shared the link can read all of it.",
+			"Everything this document has recorded, including who made each change. Whoever created the document can read all of it.",
 		),
 	);
 

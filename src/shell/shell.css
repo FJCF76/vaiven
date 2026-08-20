@@ -167,15 +167,28 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
-/* The consent notice is the one sentence whose entire job is to be read and believed. Left
-   uncapped it set at 184 characters per line on a 1280px viewport, roughly two and a half
-   times a readable measure, so it scanned as boilerplate. Capped, it wraps to two lines and
-   the brand mark falls at the end of a short line rather than trailing a very long one. */
-.disclosure span { max-width: 60ch; }
-/* Aligned to the BOTTOM of the wrapped notice, not its first baseline. Baseline-aligned it
-   parked beside line one with the rest of the bar empty to its right, reading as a stray
-   word; at the foot of the block it reads as a signature on the statement. */
-.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; }
+/* Deliberately NOT capped. A 60ch cap was tried and reverted: it fixed the measure and left
+   two thirds of the row empty, which read as a layout fault rather than as a column. The
+   notice runs the full width of the bar. The measure is long and that is a known trade,
+   recorded in TODOS. */
+/* Aligned to the BOTTOM of the wrapped notice, not its first baseline, so it reads as a
+   signature on the statement rather than a stray word beside line one.
+   `align-self` alone did not deliver that. It only bites while the notice WRAPS: at 1050px
+   and up the notice fits on one line, flex-end is that line, and the brand went straight back
+   to trailing the sentence with 220px of empty bar at 1280 and 540px at 1600 — the exact shape
+   the comment above claimed to have fixed. Below 1050px it wrapped but landed bottom-LEFT,
+   under the first word, reading as a fourth line rather than a sign-off.
+   `margin-left: auto` anchors it to the end of its flex line at every width: far right beside
+   a one-line notice, bottom right under a wrapped one. Measured, not assumed. */
+.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; margin-inline-start: auto; }
+/* The notice interpolates a key label, which the caller chooses and the server clamps only at
+   80 characters (`LIMITS.labelChars`). Unbroken, that is about 480px at 12px — wider than a
+   375px phone. A flex item will not shrink below its min-content width, so without this the
+   whole bar scrolls sideways. The removed `60ch` cap never defended against this either. */
+.disclosure span { overflow-wrap: anywhere; }
+/* The name is set apart from the prose around it on purpose. It is caller-supplied, and a
+   reader has to be able to see where it ends and the system's own voice resumes. */
+.actor { color: var(--ink); font-weight: 600; }
 .disclosure {
 	padding: var(--space-2) var(--gutter);
 	font-size: 12px;
@@ -244,16 +257,11 @@ dialog::backdrop { background: var(--scrim); }
 .panel-head h2 { font-size: 15px; margin: 0; }
 .panel-body { padding: var(--space-1) var(--space-4) var(--space-4); max-height: 60vh; overflow-y: auto; }
 .panel-body p { margin: var(--space-3) 0; }
-	width: 100%;
-	font: inherit;
-	font-size: 14px;
-	padding: var(--space-2);
-	border: 1px solid var(--rule);
-	border-radius: 3px;
-	background: var(--surface);
-	color: var(--ink);
-	resize: vertical;
-}
+/* Removing the Done dialog in 0.3.0.0 deleted the `.panel-body textarea {` SELECTOR and left
+   its declarations behind. A selector-less block is not a no-op: the parser hunts forward for
+   the next `{`, swallows the following rule into an invalid prelude, and DROPS it — so
+   `.panel-body > p` below has been dead in production ever since. Nothing failed loudly.
+   If a rule ever stops applying for no visible reason, look up-file for an unclosed selector. */
 .panel-body > p { font-size: 13px; color: var(--muted); }
 .event { display: grid; grid-template-columns: 4.25rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .event:last-child { border-bottom: 0; }

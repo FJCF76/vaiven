@@ -38,9 +38,18 @@ report is the test result.
    all over HTTPS. Verified live.
 2. **Exactly one operation needs the server box**: creating the tenant. `src/cli.ts:13` opens
    SQLite directly and has no network client; no `/api` route mints tenants.
-3. The root cause is the unresolved design question at `docs/designs/vaiven-v1.md:950`,
-   *"Self-hostable by others, or one instance?"*, now decided: one operator-provisioned
-   instance, self-hosting by cloning.
+3. The root cause is the unresolved design question at `docs/designs/vaiven-v1.md:953`,
+   *"Self-hostable by others, or one instance?"*
+
+   **CORRECTION, 2026-08-20.** This point originally continued "now decided: one
+   operator-provisioned instance, self-hosting by cloning." **That decision was never made.**
+   The line asserted as settled something that had only been assumed in order to get this
+   cycle's framing fix out, and `vaiven-v1.md:953` has stayed open the whole time. Nothing in
+   this document's actual scope depended on it: the fix was framing — telling a keyless agent
+   the truth about where keys come from — and that stands on its own.
+
+   The question remains open. See the P1 in `TODOS.md`, which is now about what this project
+   is for rather than about the instance model.
 4. **No new capability is required.** The fix is framing.
 5. No new artifact ships, so no distribution or CI work. The CLI stays server-local and
    unpublished (`package.json` is `private: true` with no `bin` entry).
@@ -77,7 +86,7 @@ test for this decision.
 ## Approaches Considered
 
 - **A — manual-only patch.** Key-first prose, corrected CLI references, install marked
-  optional. Rejected: leaves both the two-audience confusion and all five runtime hints.
+  optional. Rejected: leaves both the two-audience confusion and all four runtime hints.
 - **B — role gate restructure.** Fixes the manual properly. Rejected: an agent that probes the
   API before reading, which is what a cold agent naturally does, still gets sent to the CLI.
 
@@ -88,7 +97,7 @@ the kill criterion does not count. Ship the hygiene fix; freeze the rest.
 
 ### In scope
 
-1. **The five runtime hints** — `src/routes/api.ts:95,115,132,218` tell a caller to run
+1. **The four runtime hints** — `src/routes/api.ts:95,115,132,218` tell a caller to run
    `vaiven tenant create`, a binary that has never been published. This is the 401 body a cold
    agent meets *before* reading anything. It is a correctness bug, not polish.
 2. **The trust-model line** — the agent authors the HTML, so publishing its tenant key into
@@ -101,6 +110,9 @@ the kill criterion does not count. Ship the hygiene fix; freeze the rest.
 ### Frozen until a non-author human has used a document
 
 Role gate, section reordering, first-success probe, optional-save prose, new regression guards.
+
+*(This gate assumes adoption is the measure. See the recorded contradiction under "Success
+criteria" below — the freeze stands, its stated trigger is under question.)*
 
 ### Errors in the first draft of this document, corrected
 
@@ -116,10 +128,18 @@ Role gate, section reordering, first-success probe, optional-save prose, new reg
 
 ### The strategic decision that must not ride in on this branch
 
-`docs/designs/vaiven-v1.md:950` ("self-hostable by others, or one instance?") was being resolved
-inside a documentation change. It is extracted. Note for whoever takes it up: **"self-hosting by
-cloning" makes adoption unobservable, and the kill criterion is a count** — if usage cannot be
-counted the criterion can never fire, and the project neither succeeds nor stops.
+`docs/designs/vaiven-v1.md:953` ("self-hostable by others, or one instance?") was being resolved
+inside a documentation change. It is extracted, and it is still open.
+
+**CORRECTION, 2026-08-20.** The note here originally continued: *"self-hosting by cloning makes
+adoption unobservable, and the kill criterion is a count — if usage cannot be counted the
+criterion can never fire, and the project neither succeeds nor stops."* **Withdrawn.** It takes
+adoption as the measure of this project, and adoption is not the measure; the counted kill
+criterion is itself the thing in question, not a fixed point to reason from. Anything that makes
+usage countable is solving for a goal this project does not have. What is undeclared is purpose
+and completion criterion, not distribution — see the P1 in `TODOS.md`. The alternatives below
+stay, because they are costings rather than arguments, and they are what to read if distribution
+ever becomes a live question again.
 
 ### Alternatives never costed, recorded for that decision
 
@@ -134,6 +154,21 @@ counted the criterion can never fire, and the project neither succeeds nor stops
 
 Not "the agent fails politely". The only numbers that count: **tenant keys issued to non-author
 humans**, and **documents those humans edited**. Today both are zero.
+
+**CONTRADICTION, RECORDED 2026-08-20 — not resolved here.** The section above, the freeze gate
+at "Frozen until a non-author human has used a document", and the reason Approach C was cut
+("it served an audience the kill criterion does not count") all take **adoption as the measure
+of this project**. The author has since stated it is not: this is a theoretical exercise, not a
+product looking for users, and anything that makes usage countable is solving for a goal the
+project does not have. So this document and the P1 in `TODOS.md` now disagree about what
+success is.
+
+Both are left standing on purpose. Two design documents that disagree get the disagreement
+written down, never settled by which one is newer or more specific — the count-based criterion
+is not obviously wrong, it is *undecided*, and quietly deleting it here would be making the
+call this branch exists to avoid making. What is undeclared is purpose and completion
+criterion; once those are written down, these criteria either follow from them or are replaced
+by them. Until then, do not act on the numbers above and do not invent replacements for them.
 
 ## The assignment
 
