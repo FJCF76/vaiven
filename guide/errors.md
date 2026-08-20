@@ -19,7 +19,7 @@ Every error carries a `hint` saying what to do next. Branch on `code`, never on 
 | `not_found` | 404 | No such document, key or route | Check the id. Ids look like `d_` plus 26 characters. |
 | `conflict` | 409 | Someone wrote between your read and your write | **Your write was not applied.** The response contains the current `version` and `state`: merge into it and retry. This is routine, not an error to apologise for. |
 | `precondition_required` | 428 | A state write with no `If-Match` | Send `If-Match: "<version>"` from your last read. Without it two writers silently overwrite each other. |
-| `invalid` | 400 | Malformed body, or a field with the wrong shape | The `field` says which one. If you are building JSON in a shell, write it to a file and use `--data-binary @file`. |
+| `invalid` | 400 | Malformed body, a field with the wrong shape, or a query parameter that takes one value and got another | The `field` says which one. `raw` is the strict one: it takes `raw=1` or nothing, because being handed a coalesced view when you asked for the stored log is worse than an error you can see. If you are building JSON in a shell, write it to a file and use `--data-binary @file`. |
 | `too_large` | 413 | One object is over its cap | **Nothing was stored; the document is unchanged.** `limit` and `actual` are in the response. See `limits.md`. |
 | `quota_exceeded` | 507 | The tenant is out of documents or storage | Delete a document with `DELETE /api/docs/<id>`. The cap itself can only be raised by the instance operator. |
 | `rate_limited` | 429 | Too many requests this minute | `retry_after` is in the body as well as the header. If you are polling, read once per turn rather than on a timer. |
