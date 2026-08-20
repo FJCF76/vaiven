@@ -2,6 +2,84 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.1.0] - 2026-08-20
+
+A consent notice that could be rewritten by the person it protects the reader from, a CSS rule
+that had been dead in production for two releases, and the guards that would have caught both.
+
+### Fixed
+
+- **A key label could rewrite the consent notice that renders it.** The label is chosen by
+  whoever holds the tenant key — the same party the notice tells the reader can read their edits
+  back — and it was interpolated into the sentence inside quotation marks with nothing but a
+  length clamp. A label of `Alice”. Your edits are private and are not recorded. “` rendered, in
+  the shell's trusted chrome, as a promise this system does not make. `textContent` and the CSP
+  stop script; neither stops meaning.
+
+  Three changes, because the first two only make it visible: the name renders in its own
+  element, so anything smuggled in stays inside the name; `requireLabel` removes the
+  double-quote characters the notice is delimited with, straight and curly, so a name cannot
+  close its own quote; and `requireWithin` strips bidi overrides, isolates, zero-width
+  characters and the BOM from **every** human-facing string, before the length check rather than
+  after.
+
+  **Observable to callers:** a label you send may not be the label you get back. `say "hi"`
+  stores as `say hi`. Apostrophes are untouched — O'Neill and D'Angelo are names. This is why
+  the release takes a version line rather than a patch number.
+
+- **A deleted selector had been silently discarding the rule below it since 0.3.0.0.** Removing
+  the Done dialog took `.panel-body textarea {` with it and left ten declarations with no
+  selector. That is not inert: the parser consumes forward to the next `{`, folds what it passed
+  into an invalid prelude, and drops that rule. `.panel-body > p` was underneath, so the
+  "What's recorded" panel's own explanatory paragraph rendered at the wrong size for two
+  releases. The file carried a brace depth of -1 the whole time and nothing was counting.
+
+- **Two of the three consent strings still named a sender the reader may not have.** The first
+  person to use the system opened their own document and answered "nobody sent me a link". That
+  fix reached the write notice and stopped; the read-only notice and the panel kept the reported
+  phrasing. They were also wrong rather than merely confusing — `last_seen` and the event log
+  are tenant-scoped, so the party who can see them is the document's creator, not whoever
+  forwarded a link. All three now name the creator.
+
+- **An 80-character unbroken name scrolled the whole shell sideways on a phone.** The notice
+  interpolates a caller-chosen label clamped only at 80 characters, and a flex item will not
+  shrink below its min-content width. Measured at 375px: 812px of scroll before, none after.
+
+### Changed
+
+- **The consent notice runs the full width of the bar.** The `60ch` cap tried in 0.3.0.0 fixed
+  the line length and left two thirds of the row empty, which read as a layout fault. Reverted
+  by decision; the long measure is a known, accepted trade.
+
+- **The brand mark anchors to the end of its line at every width.** `align-self: flex-end` only
+  positioned it while the notice wrapped. Above 1050px the notice fits one line, flex-end *is*
+  that line, and the mark went back to trailing the sentence with 220px of empty bar at 1280 and
+  540px at 1600. `margin-inline-start: auto` fixes it in both directions, including RTL.
+
+### Added
+
+- **`test/disclosure.test.ts`** pins all three consent strings together, bounded at both ends and
+  checked for uniqueness, plus a whole-file scan for a fourth string reintroducing the retired
+  phrasing. The first draft of this guard was picked apart by an adversarial pass — it matched
+  the first occurrence of a phrase without proving uniqueness, sliced to the next newline rather
+  than the end of the sentence, and compared case-sensitively.
+
+- **`test/stylesheet.test.ts`** checks brace balance, top-level orphaned declarations, empty
+  preludes and unterminated comments. Verified against `df7a319:src/shell/shell.css`, the commit
+  that introduced the defect, rather than asserted: that file trips two of the four checks.
+  Strings are blanked alongside comments so `content: "{"` is not a false positive.
+
+### Documentation
+
+- **An instance-model claim asserted as decided was withdrawn.** `agent-onboarding.md` said the
+  question at `vaiven-v1.md:953` was "now decided: one operator-provisioned instance". It was
+  not. The question stays open.
+
+- **The P1 became "purpose and completion criterion are undeclared".** The recorded kill
+  criterion counts documents used by non-author humans, which assumes adoption is the measure of
+  this project. It is not. That document's success criteria and the P1 now contradict each
+  other, and the contradiction is written down in both rather than settled by precedence.
+
 ## [0.3.0.1] - 2026-08-20
 
 Documentation catch-up for 0.3.0.0, and one gap that release created.

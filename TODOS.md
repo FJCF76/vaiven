@@ -381,31 +381,6 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   leave the disclosure unsigned. **Left alone: reversing a deliberate authored value is the author's
   call, and the same over-correction was already made and reverted once on the `60ch` cap.**
 
-- **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
-  reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
-  Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
-  use a document, 2026-08-19, whose reaction was **"nobody sent me a link"** — they had opened
-  their own document. The sentence names a party the reader cannot identify, so the one claim
-  whose entire job is to be believed is the one they cannot check.
-
-  Three separate claims are welded into one line (who you are recorded as, who receives it,
-  who else can edit), and the bare "Vaivén." trailing the third reads as a fragment rather
-  than a signature. The read-only variant on line 509 packs the same way, though without the
-  false presupposition.
-
-  **Why:** this is the consent notice. Design decision 18 accepted it as "cheap now, worst
-  thing to retrofit" — the person never chose the name they are labelled with, their
-  *corrections* are retained (`from` holds the value they thought better of), and in
-  automatic mode the agent never knows the disclosure is happening, so the shell is the only
-  thing that can make it. A disclosure that confuses its reader has not disclosed anything.
-
-  **How to apply:** simplify, but do not simplify into a lie — the constraint that produced
-  this sentence is that every clause must stay true for a read-key holder, a write-key
-  holder, and the author opening their own document. Likely shape: drop the sender, name the
-  audience the reader can verify (anyone with the link, plus the agent that made the
-  document), and split the claims. Re-check the read-only variant in the same pass.
-  **Priority:** P2
-
 - **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
   produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →
   `Cliene` → `Clien` → `Clienter` → `Cliente` → `Cliente1`. A1 already coalesces per field per
@@ -571,6 +546,36 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   **Priority:** P2
 
 ## Completed
+
+- **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
+  reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
+  Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
+  use a document, 2026-08-19, whose reaction was **"nobody sent me a link"** — they had opened
+  their own document. The sentence names a party the reader cannot identify, so the one claim
+  whose entire job is to be believed is the one they cannot check.
+
+  Three separate claims are welded into one line (who you are recorded as, who receives it,
+  who else can edit), and the bare "Vaivén." trailing the third reads as a fragment rather
+  than a signature. The read-only variant on line 509 packs the same way, though without the
+  false presupposition.
+
+  **Why:** this is the consent notice. Design decision 18 accepted it as "cheap now, worst
+  thing to retrofit" — the person never chose the name they are labelled with, their
+  *corrections* are retained (`from` holds the value they thought better of), and in
+  automatic mode the agent never knows the disclosure is happening, so the shell is the only
+  thing that can make it. A disclosure that confuses its reader has not disclosed anything.
+
+  **How to apply:** simplify, but do not simplify into a lie — the constraint that produced
+  this sentence is that every clause must stay true for a read-key holder, a write-key
+  holder, and the author opening their own document. Likely shape: drop the sender, name the
+  audience the reader can verify (anyone with the link, plus the agent that made the
+  document), and split the claims. Re-check the read-only variant in the same pass.
+  **Priority:** P2
+  **Completed:** v0.3.1.0 (2026-08-20). Rewritten in 0.3.0.0 to presuppose no sender and to
+  separate the three claims; the brand mark became a signature rather than a trailing fragment
+  in 0.3.1.0. The read-only notice and the "What's recorded" panel were still carrying the
+  reported phrasing and were corrected in 0.3.1.0 as well — the original fix reached one of
+  three strings. `test/disclosure.test.ts` now pins all three together.
 
 - Two-origin deployment with blocking gates. **Completed:** v0.2.0.0 (2026-08-18)
 - Schema, ids, and one authorization decision. **Completed:** v0.2.0.0 (2026-08-18)
