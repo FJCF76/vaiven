@@ -167,11 +167,10 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
 
 /* A10: disclosure is persistent and not dismissible. A notice someone can close is not
    disclosure, and in automatic mode the shell is the only thing that can give it. */
-/* The consent notice is the one sentence whose entire job is to be read and believed. Left
-   uncapped it set at 184 characters per line on a 1280px viewport, roughly two and a half
-   times a readable measure, so it scanned as boilerplate. Capped, it wraps to two lines and
-   the brand mark falls at the end of a short line rather than trailing a very long one. */
-.disclosure span { max-width: 60ch; }
+/* Deliberately NOT capped. A 60ch cap was tried and reverted: it fixed the measure and left
+   two thirds of the row empty, which read as a layout fault rather than as a column. The
+   notice runs the full width of the bar. The measure is long and that is a known trade,
+   recorded in TODOS. */
 /* Aligned to the BOTTOM of the wrapped notice, not its first baseline. Baseline-aligned it
    parked beside line one with the rest of the bar empty to its right, reading as a stray
    word; at the foot of the block it reads as a signature on the statement. */

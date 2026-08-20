@@ -282,6 +282,25 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
 ## Shell
 
+- **The consent notice runs the full width of the bar, at about 184 characters per line.**
+  That is roughly two and a half times a readable measure (45-75), so the one sentence whose
+  job is to be read and believed is set at a width that encourages skipping.
+
+  **A `60ch` cap was tried in 0.3.0.0 and reverted by decision.** It fixed the measure and left
+  two thirds of the row empty, which read as a layout fault rather than as a deliberate column.
+  Full width is the better of the two, and the measure is a known, accepted trade — not an
+  oversight. Do not re-cap the width without solving the empty-space problem at the same time.
+
+  **How to apply, if it is ever worth revisiting:** shorten the sentence rather than narrowing
+  the column. 184 characters is a lot for a notice. Every clause is load-bearing and was
+  restored during review after being dropped, so cutting means deciding which fact a person can
+  do without — which is a product question, not a CSS one.
+
+  At 375px it already wraps to three lines and the brand mark drops to its own row. That case
+  looks right and should not regress.
+  **Priority:** P4
+
+
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
   reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
   Anyone who has the link can edit it too. Vaivén."* Reported by the first person to actually
