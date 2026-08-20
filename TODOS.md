@@ -184,15 +184,39 @@ then priority. Completed items move to the bottom.
   regression guards over guide text. Unfrozen by evidence, not by preference. See
   `docs/designs/agent-onboarding.md`.
 
-- **The instance-model decision must not ride in on a docs branch.**
+- **Purpose and completion criterion are undeclared.**
   **Priority:** P1
-  `docs/designs/vaiven-v1.md:950` ("self-hostable by others, or one instance?") needs its own
-  one-page decision. Note for whoever takes it: "self-hosting by cloning" makes adoption
-  **unobservable**, and the kill criterion is a count — if usage cannot be counted the criterion
-  can never fire, and the project neither succeeds nor stops. Alternatives never costed:
-  invite-gated `POST /api/tenants`; a public demo tenant with short expiry and tiny quota (the
-  10x reframe — the sandbox host, CSP and quota machinery that makes it safe already exists);
-  publishing the CLI.
+  The recorded kill criterion — ten documents used by non-author humans within 30 days —
+  assumes **adoption is the measure**. It is not. This is a theoretical exercise, not a product
+  looking for users, and the criterion was imported from a template that does not describe the
+  work. Until purpose and completion criterion are written down, no instance-model decision is
+  meaningful.
+
+  Consequences, so nobody re-derives them:
+  - The earlier note here argued that self-hosting by cloning makes adoption unobservable and
+    therefore disables the criterion. If adoption is not the measure, unobservable adoption is
+    not a defect, it is irrelevant. The instance model was only ever load-bearing as a way of
+    counting users.
+  - **Do not propose adoption metrics as a workaround.** Anything that makes usage countable is
+    solving for a goal this project does not have.
+  - The question worth a one-pager is *what is this for, and what would count as finished* —
+    not *how should this be distributed*. The author has asked to be in the room for that one,
+    so do not run it unattended.
+  - Once purpose is declared, the instance model stops being a decision and becomes a
+    consequence. For an exercise, cloning is fine.
+
+  **The procedural half still holds: this must not ride in on a docs branch.** It is how the
+  instance-model claim got asserted as settled in `docs/designs/agent-onboarding.md` without
+  anyone deciding it.
+
+  Where this stands, as of 2026-08-20: the question the exercise set out to answer — can an
+  agent publish an editable surface and read back an attributed diff of what a person changed —
+  has evidence behind it. Apps published, content republished repeatedly with state intact,
+  concurrent writes from both sides without collision, the capability boundary verified with
+  live 403s, and a defect review that mostly held up against the code. The open question is
+  therefore **is there anything this exercise still needs to answer**, and if not it closes for
+  having arrived rather than being killed for lack of users. The current criterion cannot reach
+  that ending.
 
 ## API
 

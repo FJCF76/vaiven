@@ -39,8 +39,17 @@ report is the test result.
 2. **Exactly one operation needs the server box**: creating the tenant. `src/cli.ts:13` opens
    SQLite directly and has no network client; no `/api` route mints tenants.
 3. The root cause is the unresolved design question at `docs/designs/vaiven-v1.md:950`,
-   *"Self-hostable by others, or one instance?"*, now decided: one operator-provisioned
-   instance, self-hosting by cloning.
+   *"Self-hostable by others, or one instance?"*
+
+   **CORRECTION, 2026-08-20.** This point originally continued "now decided: one
+   operator-provisioned instance, self-hosting by cloning." **That decision was never made.**
+   The line asserted as settled something that had only been assumed in order to get this
+   cycle's framing fix out, and `vaiven-v1.md:950` has stayed open the whole time. Nothing in
+   this document's actual scope depended on it: the fix was framing — telling a keyless agent
+   the truth about where keys come from — and that stands on its own.
+
+   The question remains open. See the P1 in `TODOS.md`, which is now about what this project
+   is for rather than about the instance model.
 4. **No new capability is required.** The fix is framing.
 5. No new artifact ships, so no distribution or CI work. The CLI stays server-local and
    unpublished (`package.json` is `private: true` with no `bin` entry).
