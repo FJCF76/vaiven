@@ -171,10 +171,16 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
    two thirds of the row empty, which read as a layout fault rather than as a column. The
    notice runs the full width of the bar. The measure is long and that is a known trade,
    recorded in TODOS. */
-/* Aligned to the BOTTOM of the wrapped notice, not its first baseline. Baseline-aligned it
-   parked beside line one with the rest of the bar empty to its right, reading as a stray
-   word; at the foot of the block it reads as a signature on the statement. */
-.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; }
+/* Aligned to the BOTTOM of the wrapped notice, not its first baseline, so it reads as a
+   signature on the statement rather than a stray word beside line one.
+   `align-self` alone did not deliver that. It only bites while the notice WRAPS: at 1050px
+   and up the notice fits on one line, flex-end is that line, and the brand went straight back
+   to trailing the sentence with 220px of empty bar at 1280 and 540px at 1600 — the exact shape
+   the comment above claimed to have fixed. Below 1050px it wrapped but landed bottom-LEFT,
+   under the first word, reading as a fourth line rather than a sign-off.
+   `margin-left: auto` anchors it to the end of its flex line at every width: far right beside
+   a one-line notice, bottom right under a wrapped one. Measured, not assumed. */
+.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; margin-left: auto; }
 /* The notice interpolates a key label, which the caller chooses and the server clamps only at
    80 characters (`LIMITS.labelChars`). Unbroken, that is about 480px at 12px — wider than a
    375px phone. A flex item will not shrink below its min-content width, so without this the
