@@ -510,17 +510,30 @@ function renderChrome() {
 	// link, a stranger who was sent a read link, and the author opening their own document.
 	// That third case is what the old wording forgot. No sender is presupposed, and the
 	// claims are separated rather than welded into one line.
+	// The label is NOT interpolated into the sentence. It is chosen by whoever holds the tenant
+	// key — the same party this notice tells the reader can read their edits back — and it was
+	// only length-clamped. Spliced into the prose it could close the quote and continue in the
+	// notice's own voice: `Alice”. Your edits are private. “` reads, in trusted chrome, as a
+	// promise this system does not make. textContent stops script, not meaning.
+	//
+	// Two answers, because either alone is thin. The server now strips bidi overrides and
+	// zero-width characters (`INVISIBLE` in quota.ts), and the name renders in its own element,
+	// so anything smuggled into it stays visibly inside the name instead of becoming narration.
+	// One outer span, not three: `.disclosure` is a flex row, and separate spans would wrap as
+	// independent items and shred the sentence.
 	disclosure.hidden = false;
-	disclosure.replaceChildren(
-		el(
-			"span",
-			null,
-			mode === "write"
-				? `Your edits save automatically and are recorded under the name “${label}”. Anyone with this link can open and change this page, and whoever created the document can read back what changed.`
-				: `You can read this document but not change it. Nothing you type is kept, though opening it is noted — a time and a rough network address, so whoever created the document can tell it is in use. Anyone with this link can read it too.`,
-		),
-		el("span", "brand", "Vaivén"),
-	);
+	const notice = el("span", null);
+	if (mode === "write") {
+		notice.append(
+			"Your edits save automatically and are recorded under the name “",
+			el("span", "actor", label),
+			"”. Anyone with this link can open and change this page, and whoever created the document can read back what changed.",
+		);
+	} else {
+		notice.textContent =
+			"You can read this document but not change it. Nothing you type is kept, though opening it is noted — a time and a rough network address, so whoever created the document can tell it is in use. Anyone with this link can read it too.";
+	}
+	disclosure.replaceChildren(notice, el("span", "brand", "Vaivén"));
 
 	if (doc.sender_note) {
 		senderEl.hidden = false;

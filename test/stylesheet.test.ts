@@ -23,10 +23,32 @@ async function read(name: string): Promise<string> {
 	return await Bun.file(new URL(`../src/shell/${name}`, import.meta.url)).text();
 }
 
-/** Comments hold braces and semicolons of their own — `{` inside prose would desync every
- *  count below. Replaced with spaces rather than removed so line numbers survive for the
- *  failure message. */
-const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+/** Comments and strings both hold braces and semicolons of their own, and either will desync
+ *  every count below. Both are blanked to spaces rather than removed, so line numbers survive
+ *  into the failure message.
+ *
+ *  An adversarial pass found two ways the first version of this could be defeated, and both
+ *  are handled here rather than noted and left:
+ *    - An UNTERMINATED `/*` is not matched by a lazy comment regex, so everything after it was
+ *      still being counted while the browser treats it as commented out. `unterminated()` below
+ *      is a separate check for exactly that.
+ *    - A brace inside a string, `content: "{"`, was counted as structural. That is legal CSS
+ *      and would have failed the build for no reason. */
+const BLANK = (m: string) => m.replace(/[^\n]/g, " ");
+const stripNoise = (css: string) =>
+	css
+		.replace(/\/\*[\s\S]*?\*\//g, BLANK)
+		.replace(/"(?:[^"\\\n]|\\.)*"/g, BLANK)
+		.replace(/'(?:[^'\\\n]|\\.)*'/g, BLANK);
+
+/** `/*` with no closer. Everything after it is comment to a browser and code to a naive scan,
+ *  which is the difference that lets a broken sheet look balanced. */
+const unterminated = (css: string) => {
+	const withoutPairs = css.replace(/\/\*[\s\S]*?\*\//g, BLANK);
+	return withoutPairs.includes("/*");
+};
+
+const stripComments = stripNoise;
 
 describe.each(SHEETS)("%s parses as the author intended", (name) => {
 	test("braces balance", async () => {
@@ -40,10 +62,22 @@ describe.each(SHEETS)("%s parses as the author intended", (name) => {
 		expect(depth).toBe(0);
 	});
 
+	test("no comment is left open", async () => {
+		// A sheet with an unterminated `/*` can satisfy every other check in this file while the
+		// browser discards everything from that point on.
+		expect(unterminated(await read(name))).toBe(false);
+	});
+
 	test("no declaration sits at the top level without a selector", async () => {
 		// The check that would have caught the 0.3.0.0 defect. At depth 0 a line ending in `;`
 		// and containing `:` is a declaration that has lost its rule. `@import`/`@charset` are
 		// the legitimate exception: they are at-rules, not declarations.
+		//
+		// KNOWN LIMIT, stated rather than discovered later: this looks at depth 0 only, so an
+		// orphan directly inside an `@media` block would slip past, as would a declaration
+		// split across lines or written without a trailing semicolon. It catches the shape the
+		// defect actually had. Widening it means parsing CSS properly, which is a different and
+		// larger job than a guard against one regression.
 		const css = stripComments(await read(name));
 		let depth = 0;
 		const orphans: string[] = [];

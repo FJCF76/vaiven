@@ -180,12 +180,15 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
    under the first word, reading as a fourth line rather than a sign-off.
    `margin-left: auto` anchors it to the end of its flex line at every width: far right beside
    a one-line notice, bottom right under a wrapped one. Measured, not assumed. */
-.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; margin-left: auto; }
+.brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; margin-inline-start: auto; }
 /* The notice interpolates a key label, which the caller chooses and the server clamps only at
    80 characters (`LIMITS.labelChars`). Unbroken, that is about 480px at 12px — wider than a
    375px phone. A flex item will not shrink below its min-content width, so without this the
    whole bar scrolls sideways. The removed `60ch` cap never defended against this either. */
 .disclosure span { overflow-wrap: anywhere; }
+/* The name is set apart from the prose around it on purpose. It is caller-supplied, and a
+   reader has to be able to see where it ends and the system's own voice resumes. */
+.actor { color: var(--ink); font-weight: 600; }
 .disclosure {
 	padding: var(--space-2) var(--gutter);
 	font-size: 12px;

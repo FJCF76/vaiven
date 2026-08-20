@@ -12,7 +12,7 @@ import { prepareContent } from "../inject.ts";
 import { fail } from "../errors.ts";
 import { baseHeaders } from "../headers.ts";
 import { isValidId, newDocId } from "../ids.ts";
-import { LIMITS, RATES, clientIp, enforceContentLength, enforceRate, requireWithin } from "../quota.ts";
+import { LIMITS, RATES, clientIp, enforceContentLength, enforceRate, requireLabel, requireWithin } from "../quota.ts";
 import { docUrls } from "../urls.ts";
 import { seedStateFromContent } from "../seed.ts";
 import { validateWebhookUrl } from "../webhook.ts";
@@ -322,7 +322,7 @@ async function createDoc(db: Database, request: Request, config: Config, scope: 
 		);
 
 		const minted: Array<{ id: string; label: string; role: string; key: KeyMaterial }> = [];
-		const editor = insertDocKey(db, id, requireWithin(body.editor_label ?? "editor", LIMITS.labelChars, "editor_label", "key label"), "write");
+		const editor = insertDocKey(db, id, requireLabel(body.editor_label ?? "editor", "editor_label"), "write");
 		minted.push({ id: editor.id, label: editor.label, role: editor.role, key: editor.plaintext });
 		if (wantsRead) {
 			const reader = insertDocKey(db, id, "reader", "read");

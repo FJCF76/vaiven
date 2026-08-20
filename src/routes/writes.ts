@@ -11,7 +11,7 @@ import { byteLength, writeTx } from "../db.ts";
 import { deriveEvents, fieldWarnings, reconcileVids, safeParse, stampVids, validateAnnotations, clamp } from "../events.ts";
 import { fail } from "../errors.ts";
 import { isValidId } from "../ids.ts";
-import { LIMITS, RATES, enforceRate, requireWithin } from "../quota.ts";
+import { LIMITS, RATES, enforceRate, requireLabel, requireWithin } from "../quota.ts";
 import { queueWebhook, validateWebhookUrl } from "../webhook.ts";
 import { mintedKeyBody } from "../urls.ts";
 import { forgetPrepared } from "./content.ts";
@@ -664,7 +664,7 @@ export async function postKey(
 			field: "role",
 		});
 	}
-	const label = requireWithin(body.label, LIMITS.labelChars, "label", "key label").trim();
+	const label = requireLabel(body.label, "label").trim();
 	if (!label) {
 		fail("invalid", "A key needs a label.", {
 			hint: 'The label becomes the actor on everything written with this key, so name the person or system it is for: {"label":"Marta","role":"write"}.',
