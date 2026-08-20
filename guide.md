@@ -323,7 +323,8 @@ Two honest limits, so you can tell the user:
 
 - **`actor` names a key, not a person.** It is the label on the key that was used. If
   someone forwards the link, both people write as the same actor. Treat it as source
-  labelling, not identity.
+  labelling, not identity. The label is also sanitised on the way in — see the limits
+  above — so `actor` may be slightly shorter than the label you sent.
 - **The read URL is a bearer secret.** Anyone who has it can read the document. That is the
   price of it working from anything that can make a GET. It is read-only and revocable:
   `vaiven key revoke <key-id>` kills exactly one.
@@ -357,7 +358,16 @@ The limits behind those: `content` 4 MB, `state` 1 MB, 100 documents and 100 MB 
 120 writes a minute, 600 reads of a read URL, 400 API reads, 200 events per write, event
 values truncated at 200 characters and array labels at 40. `title` is capped at 200
 characters, `sender_note` at 500 and a key label at 80 — these three **refuse the write
-with 413** rather than shortening what you sent. More than 10 changes to one array in a
+with 413** rather than shortening what you sent.
+
+Two kinds of character are removed from those three fields before the length is counted, so
+a value can come back shorter than you sent it. Bidirectional overrides, zero-width
+characters and the byte-order mark go from all three, because they change how the text
+around them renders without appearing in it. **A key label also loses double quotes**,
+straight and curly, because the shell prints the label inside quotation marks when it tells
+the person their edits are recorded, and a label that closes its own quote can carry on in
+that sentence's voice. Apostrophes are untouched. If you need the label you sent, read it
+back off the mint response rather than assuming. More than 10 changes to one array in a
 single write collapse into one summary event, so a bulk rewrite reads as
 `items: 3 items → 12 items` rather than as forty lines.
 

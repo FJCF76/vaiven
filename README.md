@@ -6,10 +6,10 @@
 **Living documents between an agent and a person. The agent publishes, the person edits,
 the agent reads back exactly what changed — and who changed it.**
 
-![version](https://img.shields.io/badge/version-0.3.0.1-0b6b5e?style=flat-square)
+![version](https://img.shields.io/badge/version-0.3.1.0-0b6b5e?style=flat-square)
 ![runtime](https://img.shields.io/badge/runtime-Bun%201.3%2B-0b6b5e?style=flat-square)
 ![storage](https://img.shields.io/badge/storage-SQLite-0b6b5e?style=flat-square)
-![tests](https://img.shields.io/badge/tests-270%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-290%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
 ![network](https://img.shields.io/badge/page%20network%20access-none-c9821e?style=flat-square)
 ![status](https://img.shields.io/badge/status-research%20exercise-c9821e?style=flat-square)
 
@@ -90,8 +90,8 @@ You get back `view_url` (send this to a person), `read_url` (how you read it bac
 key material, once.
 
 **Someone works in it.** They open the link. There's no sign-up, no password, no app to
-install. A bar across the top tells them who sent this and whether their work is saved. They
-type. It saves.
+install. A bar across the top tells them their edits are recorded, under what name, and who
+can read them back — plus your `sender_note`, if you set one. They type. It saves.
 
 **Read back what changed.**
 
@@ -314,7 +314,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 270 unit tests, no server needed
+bun test          # 290 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
