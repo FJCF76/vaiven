@@ -1,4 +1,4 @@
-# Vaivén
+<h1><img src="docs/mark.svg" width="36" height="36" align="top" alt=""> Vaivén</h1>
 
 > **vaivén** *(n.)* — the back-and-forth of something that swings. A tide. A pendulum.
 > A door that opens both ways.
@@ -62,7 +62,7 @@ Vaivén replaces all of that with one call out and one URL back.
 sequenceDiagram
     autonumber
     participant A as 🤖 Agent
-    participant V as 🌊 Vaivén
+    participant V as 🪃 Vaivén
     participant P as 🙋 Person
     A->>V: POST /api/docs — content + state
     V-->>A: view_url · read_url · keys, once
