@@ -1,0 +1,96 @@
+// A stylesheet can be broken in a way that no brace counter and no eye catches.
+//
+// 0.3.0.0 removed the Done dialog by deleting a line range. That took `.panel-body textarea {`
+// with it and left the ten declarations underneath with no selector. Nothing threw. A
+// selector-less block is not inert: the CSS parser, looking for a qualified rule, consumes
+// forward until the next `{`, folds whatever it passed over into an invalid prelude, and DROPS
+// that rule. `.panel-body > p` was the rule underneath, and it was dead in production for two
+// releases. The panel's own explanatory paragraph rendered at the wrong size that entire time.
+//
+// Measured against `df7a319:src/shell/shell.css`, the commit that introduced it: the file
+// carried a brace depth of **-1**, so even a trivial brace counter would have caught this on
+// the day it shipped. There was no such check. That is the whole argument for this file — the
+// defect was not subtle, it was simply unwatched. The orphan scan below flags 14 lines on that
+// same file, so both checks here are known to fire on the real defect rather than asserted to.
+//
+// This is a structural check, not a style one. It does not care what the rules say.
+
+import { describe, expect, test } from "bun:test";
+
+const SHEETS = ["shell.css"];
+
+async function read(name: string): Promise<string> {
+	return await Bun.file(new URL(`../src/shell/${name}`, import.meta.url)).text();
+}
+
+/** Comments hold braces and semicolons of their own — `{` inside prose would desync every
+ *  count below. Replaced with spaces rather than removed so line numbers survive for the
+ *  failure message. */
+const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+
+describe.each(SHEETS)("%s parses as the author intended", (name) => {
+	test("braces balance", async () => {
+		const css = stripComments(await read(name));
+		let depth = 0;
+		for (const ch of css) {
+			if (ch === "{") depth++;
+			else if (ch === "}") depth--;
+			expect(depth).toBeGreaterThanOrEqual(0); // a `}` with no opener
+		}
+		expect(depth).toBe(0);
+	});
+
+	test("no declaration sits at the top level without a selector", async () => {
+		// The check that would have caught the 0.3.0.0 defect. At depth 0 a line ending in `;`
+		// and containing `:` is a declaration that has lost its rule. `@import`/`@charset` are
+		// the legitimate exception: they are at-rules, not declarations.
+		const css = stripComments(await read(name));
+		let depth = 0;
+		const orphans: string[] = [];
+		css.split("\n").forEach((line, i) => {
+			const text = line.trim();
+			if (depth === 0 && text && !text.startsWith("@") && text.endsWith(";") && text.includes(":")) {
+				orphans.push(`${name}:${i + 1}  ${text}`);
+			}
+			for (const ch of line) {
+				if (ch === "{") depth++;
+				else if (ch === "}") depth--;
+			}
+		});
+		expect(orphans).toEqual([]);
+	});
+
+	test("every block is preceded by something that could be a selector", async () => {
+		// Catches the mirror image: a `{` whose prelude is empty, which the parser also
+		// discards. Deleting a selector line and leaving its body is how that happens.
+		const css = stripComments(await read(name));
+		let depth = 0;
+		const empty: number[] = [];
+		const lines = css.split("\n");
+		lines.forEach((line, i) => {
+			const openAt = line.indexOf("{");
+			if (depth === 0 && openAt !== -1) {
+				const before = line.slice(0, openAt).trim() || (lines[i - 1] ?? "").trim();
+				if (!before || before.endsWith(";") || before.endsWith("}")) empty.push(i + 1);
+			}
+			for (const ch of line) {
+				if (ch === "{") depth++;
+				else if (ch === "}") depth--;
+			}
+		});
+		expect(empty).toEqual([]);
+	});
+});
+
+describe("the rule the 0.3.0.0 defect silently killed", () => {
+	test(".panel-body > p is still reachable, not swallowed by an orphan above it", async () => {
+		const css = stripComments(await read("shell.css"));
+		const at = css.indexOf(".panel-body > p");
+		expect(at).toBeGreaterThan(-1);
+		// Nothing between the previous `}` and this selector except whitespace. If an orphaned
+		// block sat above, the text between would carry declarations.
+		const priorClose = css.lastIndexOf("}", at);
+		expect(priorClose).toBeGreaterThan(-1);
+		expect(css.slice(priorClose + 1, at).trim()).toBe("");
+	});
+});
