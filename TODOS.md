@@ -318,6 +318,14 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   That is roughly two and a half times a readable measure (45-75), so the one sentence whose
   job is to be read and believed is set at a width that encourages skipping.
 
+  **Measured 2026-08-20, and the framing above is partly wrong.** "184 characters per line" is
+  only true at 1280 and above, where the notice sets on ONE line. The 45-75 measure guidance is
+  about the return sweep in multi-line reading, and a single line has no return sweep, so it
+  does not bite there. It does not bite at 375 either, where the notice wraps to three lines of
+  about 61 characters — inside the readable band. The actual bad zone is **768 to 1024**, where
+  it breaks into two lines of about 92 characters: long enough to lose the sweep, short enough
+  to need one. That is a much narrower problem than this entry claimed.
+
   **A `60ch` cap was tried in 0.3.0.0 and reverted by decision.** It fixed the measure and left
   two thirds of the row empty, which read as a layout fault rather than as a deliberate column.
   Full width is the better of the two, and the measure is a known, accepted trade — not an
@@ -330,6 +338,48 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
   At 375px it already wraps to three lines and the brand mark drops to its own row. That case
   looks right and should not regress.
+
+- **The disclosure is one prose strip carrying four separate claims.**
+  **Priority:** P3
+  It says, in one 184-character sentence: edits save automatically; they are recorded; they are
+  recorded under a specific name; anyone with the link can edit; the creator can read the
+  history. Five claims serialised into one low-emphasis line, which is the visual shape of terms
+  and conditions — the thing people have learned to skip.
+
+  The proposal, from the design gate, is **not** a width change: keep the full width and give the
+  claims structure instead of prose. Something like a labelled `Recorded as “{label}”` alongside
+  short separated statements, in columns on desktop and stacked on mobile. That uses the whole
+  row without a long measure and without the empty space that killed the `60ch` cap.
+
+  **Not done here because it is a product decision, not a CSS one.** Every clause is load-bearing
+  and was restored during review after being dropped; restructuring means deciding what a person
+  can be shown first, and that is the author's call. Related: the entry above, and note that this
+  would also settle the measure question by removing prose from the bar entirely.
+
+- **The disclosure is disclosure, not consent, and the difference is not currently visible.**
+  **Priority:** P3
+  Recording starts the moment the page loads. The notice tells a person that after the fact and
+  offers no acknowledgement, no deferral, and no way to open the document without being recorded.
+  For this project that may be the right trade — the whole point is that read-back does not depend
+  on anyone remembering to opt in — but the wording implies a choice the person does not have.
+  Worth deciding deliberately rather than by omission. Typography cannot fix this one.
+
+- **The "Vaivén" mark is the only product identity on the page and measures 2.21:1.**
+  **Priority:** P3
+  12px, small-caps, `opacity: 0.55` — effective `rgb(162,170,178)` on the `#f7f8f9` bar. Dark mode
+  is 2.92:1. WCAG 1.4.3 exempts logotypes from contrast minimums, so this is **not** a conformance
+  failure, and the quiet-signature intent is deliberate and recorded in the CSS.
+
+  The tension is with the project's own threat model. A10 added `sender_note` because "the recipient
+  sees an unknown domain with a visible secret in the URL, which reads like phishing." The notice
+  itself no longer names the product, so this mark is the entire answer to "what is this site?" —
+  and at 2.21:1 a stranger on an unfamiliar domain can barely see it.
+
+  Options costed: `--muted` at full opacity is 5.14:1 but as loud as the notice; `--ink` at 0.6 is
+  4.27:1; `--muted` at 0.8 is 3.44:1, which clears the 3.0 large/UI bar while staying quiet. The
+  design gate's own preference was to move the name into the chrome bar's identity area instead and
+  leave the disclosure unsigned. **Left alone: reversing a deliberate authored value is the author's
+  call, and the same over-correction was already made and reverted once on the `60ch` cap.**
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
   reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
