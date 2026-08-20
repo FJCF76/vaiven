@@ -99,6 +99,21 @@ describe("the session boundary", () => {
 		expect(coalesceForRead(pair).length).toBe(1);
 	});
 
+	test("the gap is pairwise, so a run can span far longer than one session", () => {
+		// Documented because it surprised a reviewer and would surprise an agent: the limit is
+		// between NEIGHBOURS. Edits nine minutes apart chain indefinitely, so one summary can
+		// cover an afternoon and many versions. Pinned so the docs stay true.
+		const nineMinutes = 9 * 60_000;
+		const long = Array.from({ length: 9 }, (_, i) =>
+			row({ id: i + 1, version: i + 1, from_value: String(i), to_value: String(i + 1), ts: T0 + i * nineMinutes }),
+		);
+		const out = coalesceForRead(long);
+		expect(out.length).toBe(1);
+		expect(out[0]!.stored_events).toBe(9);
+		expect(out[0]!.ts - long[0]!.ts).toBeGreaterThan(SESSION_GAP_MS * 7);
+		expect(out[0]!.version).toBe(9); // the LAST version, though the run began at 1
+	});
+
 	test("one millisecond over the gap does not collapse", () => {
 		const pair = [
 			row({ id: 1, from_value: "a", to_value: "b", ts: T0 }),
@@ -116,15 +131,33 @@ describe("the session boundary", () => {
 });
 
 describe("what may never be merged", () => {
-	test("annotations never collapse", () => {
-		const notes = [row({ id: 1, kind: "note", note: "one" }), row({ id: 2, kind: "note", note: "two" })];
-		expect(coalesceForRead(notes).length).toBe(2);
+	// These two carry endpoints and no `note` text ON PURPOSE, so `kind` is the ONLY thing
+	// preventing the merge. The first version of both used the helper's null endpoints and a
+	// `note` string, which meant three separate guards each independently blocked the merge —
+	// so deleting the `kind` check entirely left every assertion still passing. Found by
+	// mutation, not by reading.
+	test("a non-edit kind never collapses, even carrying a perfectly mergeable transition", () => {
+		const annotations = [
+			row({ id: 1, kind: "done", from_value: "a", to_value: "b" }),
+			row({ id: 2, kind: "done", from_value: "b", to_value: "c" }),
+		];
+		expect(coalesceForRead(annotations).length).toBe(2);
 	});
 
-	test("an annotation between two edits is a barrier", () => {
+	test("every annotation kind is excluded, not just the one that got a test", () => {
+		for (const kind of ["done", "note", "error", "conflict", "webhook_failed"]) {
+			const pair = [
+				row({ id: 1, kind, from_value: "a", to_value: "b" }),
+				row({ id: 2, kind, from_value: "b", to_value: "c" }),
+			];
+			expect(coalesceForRead(pair).length).toBe(2);
+		}
+	});
+
+	test("an annotation between two edits is a barrier on its kind alone", () => {
 		const mixed = [
 			row({ id: 1, from_value: "a", to_value: "b" }),
-			row({ id: 2, kind: "note", note: "thinking" }),
+			row({ id: 2, kind: "note", from_value: "b", to_value: "b" }),
 			row({ id: 3, from_value: "b", to_value: "c" }),
 		];
 		expect(coalesceForRead(mixed).map((r) => r.id)).toEqual([1, 2, 3]);

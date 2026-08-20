@@ -529,14 +529,18 @@ const EVENT_PAGE = 500;
  *  an agent holding one URL cannot invent `?raw=1`, and a projection it cannot see is a
  *  projection it will mistake for the stored record. So the body says what it did.
  */
-const COALESCED_VIEW = {
+// FROZEN, not merely `as const`. `as const` is a compile-time assertion and erases: the
+// object is one module-level instance handed by reference into every response body on both
+// surfaces, so without this a single stray write would change what every subsequent reader
+// is told about its own data. Verified: `as const` alone leaves it writable at runtime.
+const COALESCED_VIEW = Object.freeze({
 	mode: "coalesced",
 	note:
-		"Adjacent edits by one actor to one field, no more than 10 minutes apart, are shown as one event: `from` is the value before the first, and `to`, `id`, `version` and `at` all come from the last. `stored_events` says how many stored events it stands for. Nothing was deleted — add `raw=1` to this URL to read them, repeating the SAME `since` you used here, because `next_since` points past them. Echo `next_since` as your cursor; never build one from an event's id.",
+		"Adjacent edits by one actor to one field, EACH no more than 10 minutes after the one before, are shown as one event — so a run can cover far longer than 10 minutes, and several versions. `from` is the value before the first; `to`, `id`, `version` and `at` come from the last; `stored_events` is how many stored events it stands for. One summary is not one thing a person did. Nothing was deleted: add `raw=1` for the stored events, with the SAME `since` you sent here — that returns those rows plus anything written since, not a frozen replay. Echo `next_since` as your cursor; never build one from an event's id.",
 	raw: "raw=1",
-} as const;
+} as const);
 
-const RAW_VIEW = { mode: "raw", note: "Every stored event, exactly as written. Drop `raw=1` for the coalesced view.", raw: "raw=1" } as const;
+const RAW_VIEW = Object.freeze({ mode: "raw", note: "Every stored event, exactly as written. Drop `raw=1` for the coalesced view.", raw: "raw=1" } as const);
 
 /** One spelling, or a 400 naming the field.
  *

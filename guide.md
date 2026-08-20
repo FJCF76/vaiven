@@ -283,15 +283,19 @@ no `name`. Nothing is ever changed silently, so an empty array means what it say
 history every turn and by the tenth turn nothing else fits in your context. Echo the
 top-level `next_since`; never build a cursor out of an event's `id`, `version` or `at`.
 
-**Edits arrive coalesced.** Adjacent edits by one actor to one field, no more than ten
-minutes apart, are presented as a single event: `from` is the value before the first, and
-`to`, `id`, `version` and `at` all come from the last. A coalesced event carries
-`stored_events`, the number of stored events it stands for — one summary is not one thing a
-person did, and its `id` is the last row's, not a row holding that `from`. Nothing is
-deleted: `events_view` on every read says which view you have and how to get the other. Add
-`raw=1` for the stored events, and when you want the rows behind a summary you already read,
-send the **same** `since` you sent then — `next_since` points past them. `raw` takes `raw=1`
-and nothing else; a different spelling is a `400` rather than a quiet projection.
+**Edits arrive coalesced.** Adjacent edits by one actor to one field, **each** no more than
+ten minutes after the one before, are presented as a single event: `from` is the value before
+the first, and `to`, `id`, `version` and `at` all come from the last. The ten minutes is
+between neighbours, not across the run, so one summary can cover a whole afternoon and
+several versions. It carries `stored_events`, the number of stored events it stands for —
+**one summary is not one thing a person did**, and its `id` is the last row's, not a row
+holding that `from`.
+
+Nothing is deleted. `events_view` on every read says which view you have and how to get the
+other. Add `raw=1` for the stored events, sending the **same** `since` you sent before: that
+returns the rows behind the summary **plus anything written since**, because the range is
+open at the top. It is a re-read, not a frozen replay. `raw` takes `raw=1` and nothing else;
+a different spelling is a `400` rather than a quiet projection.
 
 `kind: "done"` is a checkpoint someone chose to mark. Nothing in the shell emits one today —
 the button that did notified no one and nothing consumed it, so it was removed — but the kind

@@ -10,7 +10,7 @@ import { Database } from "bun:sqlite";
 import { migrate, open } from "../src/db.ts";
 import { newDocId, newTenantId } from "../src/ids.ts";
 import { readEvents } from "../src/routes/api.ts";
-import { SESSION_GAP_MS } from "../src/events.ts";
+import { SESSION_GAP_MS, coalesceForRead, type EventRow } from "../src/events.ts";
 import { ApiError } from "../src/errors.ts";
 
 const T0 = 1_700_000_000_000;
@@ -60,15 +60,37 @@ describe("the cursor is not moved by the projection", () => {
 	test("a run split across two reads is coherent in both, and neither repeats the other", () => {
 		// The accepted edge, asserted rather than only written down: less compression, no
 		// information lost and nothing duplicated.
+		//
+		// The first version of this test called `readEvents` twice with IDENTICAL arguments,
+		// called the second one "partial" in a comment, and never read the first half at all.
+		// It also wrote `.from_value ?? .from`, where `from_value` does not exist on a mapped
+		// event, so the `??` hid the wrong property name. It passed and proved nothing.
 		seedCliente();
-		const firstPage = readEvents(db, docId, 0, null, null);
-		// Simulate a reader who stopped after the fourth stored row.
-		const partial = readEvents(db, docId, 0, null, null);
-		expect(partial.events.length).toBe(1);
-		const early = readEvents(db, docId, 3, null, null); // rows 4..7
-		expect((early.events[0] as any).from_value ?? (early.events[0] as any).from).toBe("Cliene");
-		expect((early.events[0] as any).to).toBe("Cliente1");
-		expect(firstPage.nextSince).toBe(early.nextSince);
+		const whole = readEvents(db, docId, 0, null, null).events[0] as any;
+
+		// The same stored rows, cut where a poll boundary would cut them. Projected through
+		// the real function rather than a re-staged database, so the thing under test is the
+		// thing that runs.
+		const stored = readEvents(db, docId, 0, null, "1").events as any[];
+		const toRow = (e: any): EventRow => ({
+			id: e.id, version: e.version, actor: e.actor, kind: e.kind, field: e.field ?? null,
+			from_value: e.from ?? null, to_value: e.to ?? null, op: e.op ?? null, item: e.item ?? null,
+			note: e.note ?? null, payload: e.payload ?? null, ts: Date.parse(e.at),
+		});
+		const head = coalesceForRead(stored.slice(0, 4).map(toRow));
+		const tail = coalesceForRead(stored.slice(4).map(toRow));
+
+		// Each half is internally coherent, they join end to end with no gap and no overlap,
+		// and together they cover exactly what the single read covered.
+		expect(head.length).toBe(1);
+		expect(tail.length).toBe(1);
+		expect(head[0]!.to_value).toBe(tail[0]!.from_value);
+		expect(head[0]!.from_value).toBe(whole.from);
+		expect(tail[0]!.to_value).toBe(whole.to);
+		expect(head[0]!.id).not.toBe(tail[0]!.id);
+
+		// Two events where one read gives one. That is the whole of the accepted edge.
+		expect(head.length + tail.length).toBe(2);
 	});
 });
 

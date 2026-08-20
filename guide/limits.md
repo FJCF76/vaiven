@@ -59,9 +59,10 @@ is a barrier, and a barrier is returned exactly as it was stored.
   was continuous — a `?force=1` write or a conflict merge can move it in between — and
   presenting `a → y` for a stored `a → b` then `x → y` would report a change that never
   happened.
-- The gap between them is between zero and ten minutes. Events arrive ordered by id, not by
-  clock, so a timestamp that goes backwards is treated as a barrier rather than as a very
-  small gap.
+- The gap between them is between zero and ten minutes. That is measured between each pair,
+  not across the whole run: edits nine minutes apart chain, so a single summary can cover
+  hours and several versions. Events arrive ordered by id, not by clock, so a timestamp that
+  goes backwards is treated as a barrier rather than as a very small gap.
 - Neither carries `note`, `payload` or `item`. Merging one would drop that silently.
 
 A run that ends on the value it started from is **not** merged; its events pass through as

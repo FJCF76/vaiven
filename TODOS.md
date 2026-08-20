@@ -227,6 +227,33 @@ then priority. Completed items move to the bottom.
 
 ## API
 
+- **`raw=1` re-reads a range, it cannot replay one.**
+  **Priority:** P3
+  The coalesced view tells an agent to send the same `since` with `raw=1` to see the rows
+  behind a summary. That range is open at the top, so the reply also contains anything written
+  in between, and on the `since=-1` path the window slides entirely. The note and the manual
+  now say so plainly rather than promising a frozen replay.
+
+  **How to apply:** an upper bound would make it exact — `through=<the next_since you were
+  given>`, served as `id > since AND id <= through`. One parameter, and it turns "roughly
+  those rows plus some" into "exactly those rows". Not done here because the honest wording
+  costs nothing and a second range parameter is real surface on the route that has to satisfy
+  the access floor unaided.
+
+- **`events_view` is 517 bytes on every read, including the shell's 3-second poll.**
+  **Priority:** P4
+  Measured: 33.7 KB/s at this project's own capacity target of 200 concurrent shells, and
+  14.2 MB/day for one always-open client. Negligible at the scale this thing runs at, and the
+  field exists because an agent holding one URL cannot otherwise discover `raw=1` or learn
+  that it is reading a projection.
+
+  **How to apply, if it ever matters:** send the full note only when `since` is absent — a
+  cold reader gets it, a cursor-echoing poller gets `{mode, raw}` and nothing else. The catch
+  is that an agent resuming from a stored cursor across sessions is exactly the cold reader,
+  and it always sends a `since`. Do not do this without solving that.
+
+
+
 All three below were reported by a third-party agent after building two documents against
 v0.2.5.1 on 2026-08-19, then verified against the source.
 
