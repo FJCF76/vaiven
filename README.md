@@ -6,6 +6,15 @@
 **Living documents between an agent and a person. The agent publishes, the person edits,
 the agent reads back exactly what changed — and who changed it.**
 
+![version](https://img.shields.io/badge/version-0.3.0.1-0b6b5e?style=flat-square)
+![runtime](https://img.shields.io/badge/runtime-Bun%201.3%2B-0b6b5e?style=flat-square)
+![storage](https://img.shields.io/badge/storage-SQLite-0b6b5e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-270%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
+![network](https://img.shields.io/badge/page%20network%20access-none-c9821e?style=flat-square)
+![status](https://img.shields.io/badge/status-research%20exercise-c9821e?style=flat-square)
+
+<p align="center"><img src="docs/hero.svg" alt="An agent publishes a document; a person edits it; the diff flows back to the agent." width="100%"></p>
+
 ---
 
 Every artifact an agent publishes is a message in a bottle. It floats off, somebody opens
@@ -49,6 +58,21 @@ Vaivén replaces all of that with one call out and one URL back.
 
 ## Sixty seconds
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as 🤖 Agent
+    participant V as 🌊 Vaivén
+    participant P as 🙋 Person
+    A->>V: POST /api/docs — content + state
+    V-->>A: view_url · read_url · keys, once
+    A->>P: sends the link
+    P->>V: opens it, works in it
+    Note over V: events are derived automatically<br/>as the state changes
+    A->>V: GET the read URL, with ?since=
+    V-->>A: state + what changed + who changed it
+```
+
 **Publish something.** Ordinary HTML. Give every field a `name` — that's the entire
 convention.
 
@@ -90,6 +114,16 @@ Everything hangs on refusing to store the app and the data in the same place.
 | `content` | the app's HTML | the agent |
 | `state` | JSON holding the data | the person, and the agent |
 | `events` | what changed, with a name attached | derived automatically |
+
+```mermaid
+flowchart LR
+    AG(["🤖 Agent"]) -->|writes| C["content<br/>the app's HTML"]
+    AG -->|writes| S["state<br/>the JSON"]
+    PE(["🙋 Person"]) -->|writes| S
+    S --> EV["events<br/>derived automatically"]
+    EV -->|"read back, with ?since="| AG
+    C -.->|"republish freely —<br/>never touches state"| C
+```
 
 Which buys you the thing that makes this worth building: **the agent can rewrite the entire
 app without losing a single value.** Change your mind about the layout at 11pm while someone
@@ -136,32 +170,61 @@ precisely which three you moved, and that you moved them.
 
 Most of the design is subtraction, and most of it is deliberate.
 
-**Your page has no network. At all.** No `fetch`, no CDN, no remote fonts, no analytics,
+### 🔌 Your page has no network. At all. No `fetch`, no CDN, no remote fonts, no analytics,
 nothing. Inline everything, embed assets as `data:` URIs. The page is model-authored HTML
 served to whoever opens the link, so it runs in an opaque origin with `connect-src 'none'` —
 if it were ever tricked into holding a secret, it has no way to spend it. Everything else
 works: JavaScript, canvas, WebGL, Workers, animation, up to 4 MB. You can embed a variable
 font as base64 and make it look like anything you want.
 
-**The key lives after the `#`.** Fragments aren't sent to servers, so a `view_url` never
-puts its secret in an access log. The link is the credential — which is honest about what
-it is, and worth remembering before forwarding one.
+### 🔗 The key lives after the `#`
 
-**A document key can do three things:** read, write `state`, append events. Not republish,
-not delete, not mint more keys. That narrowness is exactly why it's safe to put one in a
-link you send to somebody.
+Fragments aren't sent to servers, so a `view_url` never puts its secret in an access log.
+The link is the credential — which is honest about what it is, and worth remembering before
+forwarding one.
 
-**There's no directory, no search, and no sign-up.** You can't browse to a document. There
-is nothing to enumerate. Keys are minted by whoever runs the instance, and no request you
-can make will produce one.
+### 🔑 A document key can do exactly three things
 
-**Administration is a CLI, not an API.** Everything under it either mints credentials or
-destroys data, and neither belongs behind a browser session on a host that also serves
-model-authored HTML.
+|                                    | Tenant key | Document key | Read key |
+|------------------------------------|:----------:|:------------:|:--------:|
+| Read the document                  |     ✅     |      ✅      |    ✅    |
+| Write `state`, append events       |     ✅     |      ✅      |    ❌    |
+| Republish `content`                |     ✅     |      ❌      |    ❌    |
+| Mint keys, delete, restore, webhook|     ✅     |      ❌      |    ❌    |
 
-**The manual is one page.** `guide.md` explains the whole system, with working curl for
-every route, and it is served live so an agent can bootstrap from a single fetch. If a
-future version makes you fetch a second page to get started, that's a regression.
+That narrowness is exactly why it's safe to put one in a link you send to somebody. And it's
+enforced at the server, not in the interface.
+
+### 🕵️ There's no directory, no search, and no sign-up
+
+You can't browse to a document. There is nothing to enumerate. Keys are minted by whoever
+runs the instance, and no request you can make will produce one.
+
+### 🖥️ Administration is a CLI, not an API
+
+Everything under it either mints credentials or destroys data, and neither belongs behind a
+browser session on a host that also serves model-authored HTML.
+
+### 📄 The manual is one page`guide.md` explains the whole system, with working curl for every route, and it is served
+live so an agent can bootstrap from a single fetch. If a future version makes you fetch a
+second page to get started, that's a regression.
+
+### 🧱 Two hostnames, and the process refuses to start without both
+
+```mermaid
+flowchart TB
+    subgraph shell["🔐 vaiven.host — the shell"]
+        SH["holds the key · draws the top bar<br/>talks to the API"]
+    end
+    subgraph sand["📦 uc.vaiven.host — the sandbox"]
+        CT["model-authored HTML<br/>opaque origin · connect-src 'none'"]
+    end
+    shell -->|"embeds in an iframe"| sand
+    sand -.->|"no cookies · no storage<br/>no reach into the shell"| shell
+```
+
+A collapsed origin is the precise failure this design exists to prevent, so the two hosts
+being equal is a startup error rather than a warning.
 
 ## About this project
 
