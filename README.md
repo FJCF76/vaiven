@@ -1,11 +1,113 @@
-# vaiven
-Living documents between Claude and people: Claude publishes, the user edits, Claude reads back.
+<h1><img src="docs/mark.svg" width="36" height="36" align="top" alt=""> Vaivén</h1>
 
-An agent publishes a small web app. A person opens a link and works in it. On any later turn
-the agent reads back a diff of what they changed, with a name attached, from a plain URL that
-needs no header, no SDK and no JavaScript.
+> **vaivén** *(n.)* — the back-and-forth of something that swings. A tide. A pendulum.
+> A door that opens both ways.
 
-Three layers, and separating them is the whole trick:
+**Living documents between an agent and a person. The agent publishes, the person edits,
+the agent reads back exactly what changed — and who changed it.**
+
+![version](https://img.shields.io/badge/version-0.3.0.1-0b6b5e?style=flat-square)
+![runtime](https://img.shields.io/badge/runtime-Bun%201.3%2B-0b6b5e?style=flat-square)
+![storage](https://img.shields.io/badge/storage-SQLite-0b6b5e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-270%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
+![network](https://img.shields.io/badge/page%20network%20access-none-c9821e?style=flat-square)
+![status](https://img.shields.io/badge/status-research%20exercise-c9821e?style=flat-square)
+
+<p align="center"><img src="docs/hero.svg" alt="An agent publishes a document; a person edits it; the diff flows back to the agent." width="100%"></p>
+
+---
+
+Every artifact an agent publishes is a message in a bottle. It floats off, somebody opens
+it somewhere, and you never hear back. Maybe they loved it. Maybe they fixed your terrible
+number. Maybe they never opened it at all. You get the same silence either way.
+
+Vaivén is the tide coming in.
+
+Same bottle — a small web app, published from one API call — except this one comes back,
+with a note inside saying exactly what they changed, what it was before, and whose hands
+it passed through.
+
+```json
+{ "state": { "fee": "900" },
+  "events": [
+    {"actor":"Marta","kind":"edit","field":"fee","from":"18400","to":"900"},
+    {"actor":"Marta","kind":"edit","field":"deliverables","op":"add","item":"Extra budget"},
+    {"actor":"Marta","kind":"done","note":"cut the fee, added a line"}
+  ],
+  "next_since": 7 }
+```
+
+That's a real response, from a plain URL, with no header, no SDK and no JavaScript. Marta
+cut your fee by 95% and told you why. Now go and have feelings about it.
+
+---
+
+## The problem this closes
+
+An agent can already publish something beautiful. What it cannot do is *watch someone use
+it*. The moment the link leaves your hands, the loop breaks, and it gets patched by the
+oldest technology in software:
+
+> "Great, thanks! I've made a few changes, see attached."
+
+You get a snapshot and have to diff it in your head. Or you ask people to paste things into
+a chat window like it's 2011. Or you build a whole app with a database and a login page,
+because you needed four numbers back from one person.
+
+Vaivén replaces all of that with one call out and one URL back.
+
+## Sixty seconds
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as 🤖 Agent
+    participant V as 🪃 Vaivén
+    participant P as 🙋 Person
+    A->>V: POST /api/docs — content + state
+    V-->>A: view_url · read_url · keys, once
+    A->>P: sends the link
+    P->>V: opens it, works in it
+    Note over V: events are derived automatically<br/>as the state changes
+    A->>V: GET the read URL, with ?since=
+    V-->>A: state + what changed + who changed it
+```
+
+**Publish something.** Ordinary HTML. Give every field a `name` — that's the entire
+convention.
+
+```bash
+curl -s https://your-host/api/docs \
+  -H "Authorization: Bearer $VAIVEN_KEY" -H 'content-type: application/json' \
+  -d '{"title":"Harbour Lane fitout",
+       "sender_note":"Could you check the fee and the dates? — sent by Ana",
+       "read_key":true,
+       "content":"<!doctype html><html><body><label>Fee <input name=\"fee\" value=\"18400\"></label></body></html>",
+       "state":{}}'
+```
+
+You get back `view_url` (send this to a person), `read_url` (how you read it back), and the
+key material, once.
+
+**Someone works in it.** They open the link. There's no sign-up, no password, no app to
+install. A bar across the top tells them who sent this and whether their work is saved. They
+type. It saves.
+
+**Read back what changed.**
+
+```bash
+curl -s "https://your-host/r/YOUR_READ_KEY.json?since=128"
+```
+
+That's the loop. Everything else in this file is detail.
+
+> **Writing an app against Vaivén?** You want **[`guide.md`](guide.md)** — the whole manual
+> on one page, with working curl for every route, and nothing to fetch after it. It installs
+> as an agent skill in one line. This file is about the idea, and about running the service.
+
+## The trick: three layers
+
+Everything hangs on refusing to store the app and the data in the same place.
 
 | Layer | What it is | Who writes it |
 |---|---|---|
@@ -13,11 +115,141 @@ Three layers, and separating them is the whole trick:
 | `state` | JSON holding the data | the person, and the agent |
 | `events` | what changed, with a name attached | derived automatically |
 
-The agent can rewrite the entire app without losing a single value, and the person's edits
-come back as a diff rather than a snapshot.
+```mermaid
+flowchart LR
+    AG(["🤖 Agent"]) -->|writes| C["content<br/>the app's HTML"]
+    AG -->|writes| S["state<br/>the JSON"]
+    PE(["🙋 Person"]) -->|writes| S
+    S --> EV["events<br/>derived automatically"]
+    EV -->|"read back, with ?since="| AG
+    C -.->|"republish freely —<br/>never touches state"| C
+```
 
-**Writing an app against Vaivén?** You want [`guide.md`](guide.md), not this file. This file
-is about running and developing the service.
+Which buys you the thing that makes this worth building: **the agent can rewrite the entire
+app without losing a single value.** Change your mind about the layout at 11pm while someone
+has the document open, republish, and their half-typed note is still there. The columns
+move. The data doesn't.
+
+And because `events` are derived rather than reported, nobody has to remember to log
+anything. The person just works. The diff assembles itself behind them.
+
+## Two ways to write the app
+
+**Automatic.** Put `name` on your inputs and stop thinking about it. Values in the markup
+become the starting state; everything typed is captured and restored on reload. A form is
+about four lines of work.
+
+**App mode.** If people can add, remove or reorder things, no amount of markup can restore
+that structure, so you take over with a painter and a mutator:
+
+```js
+Vaiven.render(state => { … })   // runs when state arrives, and after every change
+Vaiven.mutate(draft => { … })   // the only way to change state
+```
+
+That's most of the API. There is no framework here and no build step required — a document
+is one file, and the sandbox will run whatever you put in it.
+
+## What it's actually good for
+
+**Getting structured input back as data.** A fee and two dates. A plan someone needs to
+correct. A shortlist to reorder. Anything where "just reply and tell me" turns into
+transcription work for whoever asked.
+
+**Personal tools that never sit still.** A CRM for one person. A tracker for exactly one
+initiative. The reason these usually rot in a spreadsheet is that changing them costs more
+than living with them — and here changing one costs a single `PUT`, with your data
+untouched. Rebuild it whenever you change your mind. That's the point.
+
+**A shared surface with an agent.** This is the one that isn't just "a cheaper form". Both
+sides write to the same document, and the agent sees the diff. Move three rows to
+*Negotiation* and it can draft those three follow-ups on its next turn — because it knows
+precisely which three you moved, and that you moved them.
+
+## Opinions this thing holds
+
+Most of the design is subtraction, and most of it is deliberate.
+
+### 🔌 Your page has no network. At all. No `fetch`, no CDN, no remote fonts, no analytics,
+nothing. Inline everything, embed assets as `data:` URIs. The page is model-authored HTML
+served to whoever opens the link, so it runs in an opaque origin with `connect-src 'none'` —
+if it were ever tricked into holding a secret, it has no way to spend it. Everything else
+works: JavaScript, canvas, WebGL, Workers, animation, up to 4 MB. You can embed a variable
+font as base64 and make it look like anything you want.
+
+### 🔗 The key lives after the `#`
+
+Fragments aren't sent to servers, so a `view_url` never puts its secret in an access log.
+The link is the credential — which is honest about what it is, and worth remembering before
+forwarding one.
+
+### 🔑 A document key can do exactly three things
+
+|                                    | Tenant key | Document key | Read key |
+|------------------------------------|:----------:|:------------:|:--------:|
+| Read the document                  |     ✅     |      ✅      |    ✅    |
+| Write `state`, append events       |     ✅     |      ✅      |    ❌    |
+| Republish `content`                |     ✅     |      ❌      |    ❌    |
+| Mint keys, delete, restore, webhook|     ✅     |      ❌      |    ❌    |
+
+That narrowness is exactly why it's safe to put one in a link you send to somebody. And it's
+enforced at the server, not in the interface.
+
+### 🕵️ There's no directory, no search, and no sign-up
+
+You can't browse to a document. There is nothing to enumerate. Keys are minted by whoever
+runs the instance, and no request you can make will produce one.
+
+### 🖥️ Administration is a CLI, not an API
+
+Everything under it either mints credentials or destroys data, and neither belongs behind a
+browser session on a host that also serves model-authored HTML.
+
+### 📄 The manual is one page`guide.md` explains the whole system, with working curl for every route, and it is served
+live so an agent can bootstrap from a single fetch. If a future version makes you fetch a
+second page to get started, that's a regression.
+
+### 🧱 Two hostnames, and the process refuses to start without both
+
+```mermaid
+flowchart TB
+    subgraph shell["🔐 vaiven.host — the shell"]
+        SH["holds the key · draws the top bar<br/>talks to the API"]
+    end
+    subgraph sand["📦 uc.vaiven.host — the sandbox"]
+        CT["model-authored HTML<br/>opaque origin · connect-src 'none'"]
+    end
+    shell -->|"embeds in an iframe"| sand
+    sand -.->|"no cookies · no storage<br/>no reach into the shell"| shell
+```
+
+A collapsed origin is the precise failure this design exists to prevent, so the two hosts
+being equal is a startup error rather than a warning.
+
+## About this project
+
+This is a research exercise, and it's more fun to say so than to pretend otherwise.
+
+The question it was built to answer: **can an agent hand a person a real working surface,
+and get back something better than a shrug?** Not a form submission. Not a snapshot to diff
+by eye. An attributed, incremental account of what a human being actually did — precise
+enough to act on, cheap enough to read on every turn.
+
+The answer turned out to be yes, and the interesting part was *where the difficulty moved*.
+Not to the diffing, which is mechanical. It moved to the seams: keeping a repaint from
+stealing the cursor out from under someone mid-word, deciding what a key is allowed to be,
+working out that an agent authoring an interface it cannot see needs a way to check its own
+work. Those are the problems, and they're the reason there's a design-doc directory below
+rather than a marketing page.
+
+It runs. It's used. It isn't chasing anybody, and it doesn't need to be — which is a fairly
+comfortable place to build from.
+
+---
+
+# Running it
+
+Everything above is why. Everything below is how.
 
 ## What you need
 

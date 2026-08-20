@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" role="img" aria-label="An agent publishes content; a person edits state; events flow back to the agent as a diff.">
+  <defs>
+    <linearGradient id="out" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0e8574" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#0e8574" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="back" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0%" stop-color="#c9821e" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#c9821e" stop-opacity="1"/>
+    </linearGradient>
+    <marker id="ah-out" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0e8574"/>
+    </marker>
+    <marker id="ah-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c9821e"/>
+    </marker>
+  </defs>
+
+  <style>
+    .node  { fill:none; stroke:#8892a0; stroke-width:1.5; }
+    .label { font:600 15px/1 ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+             fill:#8892a0; letter-spacing:.02em; }
+    .cap   { font:600 11px/1 ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+             letter-spacing:.14em; }
+    .note  { font:400 12.5px/1 ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+             fill:#8892a0; }
+    .mono  { font:400 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+             fill:#8892a0; }
+    .teal  { fill:#0e8574; } .amber { fill:#c9821e; }
+    .flow  { fill:none; stroke-width:2.5; stroke-linecap:round; }
+  </style>
+
+  <!-- endpoints -->
+  <rect class="node" x="24" y="112" width="132" height="66" rx="14"/>
+  <text class="label" x="90" y="151" text-anchor="middle">AGENT</text>
+
+  <rect class="node" x="744" y="112" width="132" height="66" rx="14"/>
+  <text class="label" x="810" y="151" text-anchor="middle">PERSON</text>
+
+  <!-- the document in the middle -->
+  <rect class="node" x="352" y="88" width="196" height="114" rx="16" stroke-dasharray="5 5"/>
+  <text class="cap teal" x="450" y="120" text-anchor="middle">THE DOCUMENT</text>
+  <text class="mono"  x="450" y="145" text-anchor="middle">content · the app</text>
+  <text class="mono"  x="450" y="166" text-anchor="middle">state · the data</text>
+  <text class="mono"  x="450" y="187" text-anchor="middle">events · the diff</text>
+
+  <!-- outbound: agent publishes -->
+  <path class="flow" stroke="url(#out)" marker-end="url(#ah-out)"
+        d="M164 132 C 240 132, 260 104, 344 104"/>
+  <text class="cap teal" x="254" y="88" text-anchor="middle">PUBLISHES</text>
+
+  <path class="flow" stroke="url(#out)" marker-end="url(#ah-out)"
+        d="M556 104 C 640 104, 660 132, 736 132"/>
+  <text class="cap teal" x="646" y="88" text-anchor="middle">OPENS A LINK</text>
+
+  <!-- return: person edits, events come back -->
+  <path class="flow" stroke="url(#back)" marker-end="url(#ah-back)"
+        d="M736 158 C 660 158, 640 186, 556 186"/>
+  <text class="cap amber" x="646" y="215" text-anchor="middle">EDITS</text>
+
+  <path class="flow" stroke="url(#back)" marker-end="url(#ah-back)"
+        d="M344 186 C 260 186, 240 158, 164 158"/>
+  <text class="cap amber" x="254" y="215" text-anchor="middle">READS THE DIFF</text>
+
+  <!-- footer note -->
+  <text class="note" x="450" y="262" text-anchor="middle">
+    The agent can rewrite the whole app without losing a single value.
+  </text>
+  <text class="note" x="450" y="282" text-anchor="middle">
+    What comes back is a diff, with a name attached — not a snapshot.
+  </text>
+</svg>
