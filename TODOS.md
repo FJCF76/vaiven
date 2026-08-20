@@ -456,6 +456,46 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   `putContent` and `restoreVersion` both bump the version and deliver nothing. A change
   arriving during an in-flight delivery is dropped rather than coalesced.
 
+## Deployment
+
+Found by the adversarial pass on the 2026-08-20 reboot fix. That fix made the deploy verify
+that the service serves and is enabled at boot; these are the hazards it does not close.
+
+- **There is no staged release and no rollback.**
+  **Priority:** P1
+  `deploy/sync.sh` overwrites `/opt/vaiven` file by file with `rsync --delete` while the
+  old process is still running. An interruption, a full disk, or a host failure mid-sync
+  leaves a mixed tree, and now that the unit is enabled the next reboot starts whatever
+  that tree happens to be. Delaying `systemctl enable` until the health check passes does
+  **not** close this: on an upgrade the unit was already enabled, so installing the new
+  unit and running `daemon-reload` changes what the existing boot link will start before
+  anything has been validated. A failed health check then leaves the broken version
+  enabled at boot with no way back. The fix is a staged release directory, an atomic
+  symlink swap, and a previous release retained for rollback.
+
+- **Concurrent deploys can interleave.**
+  **Priority:** P2
+  Nothing locks. Two runs of `sync.sh` can interleave rsync, unit installation and
+  restart, and one run's health check can pass because the *other* run's process came up
+  — reporting success for a revision that was never fully deployed. `flock` on a lock file
+  around the whole script is a few lines.
+
+- **The sudo the deploy needs is effectively root, and a narrower policy fails late.**
+  **Priority:** P3
+  `sudo -n` only suppresses the password prompt; it does not narrow anything. A NOPASSWD
+  grant for unrestricted `rsync`, `install` or recursive `chown` is arbitrary root
+  filesystem write by another name, so "the deploy user has sudo for four commands" is not
+  the containment it reads like. In the other direction, a self-hoster who grants a
+  genuinely narrow policy gets a failure *after* rsync has already overwritten the live
+  tree. Either check the required verbs up front and fail before touching anything, or
+  ship a root-owned deployment helper with a fixed argument set and document it.
+
+- **The health check knows one route.**
+  **Priority:** P3
+  `verify_running` fetches `/guide.md` on the app host. That proves the process serves the
+  app origin; it says nothing about the sandbox host, and a deploy that broke `/c/:id`
+  while leaving `/guide.md` intact would still report success.
+
 ## Documentation
 
 - **`README.md` claimed the CLI has `enable` and `disable` verbs. It does not.** Corrected in
