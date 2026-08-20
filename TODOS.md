@@ -503,12 +503,13 @@ that the service serves and is enabled at boot; these are the hazards it does no
   the separate P3 entry above.
 
 - **The unit-test count in `README.md` is a hand-maintained number.** It said 233 when the
-  suite had 235; it had drifted across two releases before anyone read that line. A static
-  guard would be wrong, because many tests are generated inside loops (172 literal `test(`
-  calls produce 235 tests) — `test/config.test.ts:66` wraps one `test()` in a `for` over
-  five bad hostnames, and `test/guide.test.ts:52` does the same over five helper members.
-  Counting the source does not answer the question. Either parse `bun test` output in a
-  guard, or drop the number.
+  suite had 235; it had drifted across two releases before anyone read that line. It then
+  drifted again, further: 329 in the README against 359 actual at 0.3.3.0, so correcting it
+  by hand demonstrably does not hold. A static guard would be wrong, because many tests are
+  generated inside loops — `test/config.test.ts:66` wraps one `test()` in a `for` over five
+  bad hostnames, `test/guide.test.ts:52` does the same over five helper members, and
+  `test/deploy.test.ts` now generates ten the same way. Counting the source does not answer
+  the question. Either parse `bun test` output in a guard, or drop the number.
   **Priority:** P4
 
 - **`upstream_error` (502) is declared and never thrown.**

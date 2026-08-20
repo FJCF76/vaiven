@@ -314,7 +314,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 329 unit tests, no server needed
+bun test          # 359 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 
@@ -396,6 +396,32 @@ open it, and in a shell an unset variable silently expands to nothing.
   deploy sync. The backup reads `VAIVEN_BACKUP_DIR` (default `/var/lib/vaiven/backups`) and
   `VAIVEN_BACKUP_KEEP` (default 14). At the six-hourly cadence 14 copies is three and a half
   days of history, so raise it if you want to be able to reach further back.
+
+`sync.sh` pushes the working tree to `/opt/vaiven`, installs the units, restarts, and then
+**refuses to report success unless two things are true**: the service answers a real request,
+and the unit is `enabled` so it comes back after a reboot.
+
+Both checks exist because their obvious versions accept a host that is broken. `systemctl
+is-active` says the process launched, not that it answers — `Type=simple` reports success the
+moment `ExecStart` execs — so the deploy fetches `/guide.md` from the bind address and requires
+HTTP 200, twice, longer than `RestartSec` apart. One good response is not health when
+`Restart=always` means a dying service can be sampled while it happens to be up. And
+`systemctl is-enabled` exits 0 for `static`, `enabled-runtime`, `indirect` and `generated`, of
+which only `enabled` starts a unit at boot, so the deploy compares the reported state rather
+than the exit code. Vaivén ran for two releases on a host whose unit was `disabled`; nothing
+noticed until the box rebooted and Caddy served 502 to an upstream that was never started.
+
+```bash
+deploy/sync.sh                # deploy, then verify
+deploy/sync.sh --verify-only  # check a host without deploying to it
+```
+
+`--verify-only` answers "is it serving, and will it come back?" and needs no `sudo` when the
+config is already in the environment. Two knobs, both for slow or unusual hosts:
+`VAIVEN_HEALTH_ATTEMPTS` (default 10, clamped to 60) is how many times to ask before giving up,
+and `VAIVEN_HEALTH_SETTLE` (default 3 seconds) is the gap between the two confirming requests.
+Keep the settle above `RestartSec` or the second request cannot tell a healthy service from a
+restarting one.
 
 ## Where the docs are
 
