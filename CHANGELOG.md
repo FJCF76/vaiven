@@ -2,6 +2,68 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.2.0] - 2026-08-20
+
+Typing one word with corrections stored seven events. It now reads back as one.
+
+### Changed
+
+- **Adjacent edits collapse when they are READ, not when they are written.** In a real
+  session `cliente` went `Clienet ` → `Clienet` → `Cliene` → `Clien` → `Clienter` →
+  `Cliente` → `Cliente1`: seven stored events, six carrying nothing a reader wants. A1 already
+  coalesces per field per flush, but the flush fires when the write pipeline builds a PUT, so
+  any pause mid-word ends a batch. That works directly against `next_since`, which exists to
+  stop histories crowding out an agent's context.
+
+  Nobody reported it for two releases because **an agent reading its own diffs never types
+  with backspaces**. Only a human does, and the human has no channel to report it.
+
+  Read time rather than write time, deliberately. A1 chose eager flushing because people close
+  tabs rather than tab out. Widening the flush window would trade log cleanliness against
+  durability; collapsing on the way out trades nothing, and every history already stored
+  benefits without anything being discarded at ingest.
+
+  **What merges:** adjacent edits by one actor to one field, each no more than ten minutes
+  after the one before — measured pairwise, so a run can cover an afternoon and several
+  versions — and continuous in value. `from` is the value before the first; `to`, `id`,
+  `version` and `at` come from the last; `stored_events` says how many it stands for. One
+  summary is not one thing a person did.
+
+  **What never merges:** annotations of any kind, array element events (two adds are two
+  elements), different actors, different fields, missing endpoints, rows carrying `note`,
+  `payload` or `item`, timestamps that go backwards, and any pair where the previous `to` is
+  not the next `from` — merging that last one would report a transition that never happened.
+
+  **A run that ends where it started is not merged at all**; its events pass through as
+  stored. Dropping it made the observable history depend on read cadence: zero events for an
+  agent reading afterwards, two for the shell, which polls every few seconds.
+
+### Added
+
+- **`?raw=1` returns the stored log**, on both read surfaces. It takes `raw=1` and nothing
+  else; a different spelling is a `400` naming the field rather than a quiet projection,
+  because an agent handed a summary when it asked for the record cannot tell.
+- **`events_view` on every read** says which view you have, how to reach the other, and the
+  cursor rule. An agent holding one URL cannot invent `?raw=1`, and a projection it cannot see
+  is one it will mistake for the stored record. Same reasoning that made `untrusted` a
+  sentence instead of a boolean.
+
+### Fixed
+
+- **The cursor query had no index that served it.** A5 added `events_since(doc_id, version,
+  id)` when the cursor was a version; A8 made it an event id and nobody re-checked, so with
+  `version` between the constrained prefix and the ordering key SQLite walked the rowid across
+  every document's events and filtered. Measured on 40,000 events across 50 interleaved
+  documents, this project's own capacity target: `?since=0` 1.996ms → 0.587ms, a recent cursor
+  0.031ms → 0.009ms. Both 3.4x, entirely from no longer reading fifty documents to serve one.
+  No gain at all on a single-document database.
+
+### Notes for anyone integrating
+
+`next_since` is computed from the stored rows before any collapse and is identical in both
+views. Echo it; never build a cursor from an event's `id`. `raw=1` with the same `since` is a
+re-read of an open range, not a frozen replay — it also returns anything written in between.
+
 ## [0.3.1.0] - 2026-08-20
 
 A consent notice that could be rewritten by the person it protects the reader from, a CSS rule
