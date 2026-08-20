@@ -45,6 +45,35 @@ value is always in `state`, and the truncation is marked with `…`.
 Exceeding a quota returns `507`. Exceeding a rate returns `429` with `retry_after` in the
 body as well as the header.
 
+## What coalescing will and will not merge
+
+Two adjacent events are presented as one only when every one of these holds. Anything else
+is a barrier, and a barrier is returned exactly as it was stored.
+
+- Both are `kind: "edit"`, with a non-empty `field` and no `op`. Array element events name a
+  distinct element each, so two `add`s are two elements and never one.
+- Same `actor`. Two people editing the same field stay two events, which is the entire point
+  of `actor` being on the event at all.
+- Both `from` and `to` are present. A missing endpoint is not an empty one.
+- The previous `to` equals the next `from`. Same actor and same field do not imply the value
+  was continuous — a `?force=1` write or a conflict merge can move it in between — and
+  presenting `a → y` for a stored `a → b` then `x → y` would report a change that never
+  happened.
+- The gap between them is between zero and ten minutes. That is measured between each pair,
+  not across the whole run: edits nine minutes apart chain, so a single summary can cover
+  hours and several versions. Events arrive ordered by id, not by clock, so a timestamp that
+  goes backwards is treated as a barrier rather than as a very small gap.
+- Neither carries `note`, `payload` or `item`. Merging one would drop that silently.
+
+A run that ends on the value it started from is **not** merged; its events pass through as
+stored. Merging it would produce an event saying nothing changed, and dropping it would make
+the history depend on when you happened to read.
+
+How much collapses depends on how much of a burst is in one response, so two readers on
+different schedules can see different event counts for the same edits. Neither is missing
+anything. `raw=1` returns the stored log on both read surfaces, and `next_since` is the same
+number either way.
+
 ## What is not limited
 
 Interactivity. Your page can run JavaScript, use `eval`, canvas, WebGL, Web Workers, audio,

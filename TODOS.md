@@ -227,6 +227,33 @@ then priority. Completed items move to the bottom.
 
 ## API
 
+- **`raw=1` re-reads a range, it cannot replay one.**
+  **Priority:** P3
+  The coalesced view tells an agent to send the same `since` with `raw=1` to see the rows
+  behind a summary. That range is open at the top, so the reply also contains anything written
+  in between, and on the `since=-1` path the window slides entirely. The note and the manual
+  now say so plainly rather than promising a frozen replay.
+
+  **How to apply:** an upper bound would make it exact — `through=<the next_since you were
+  given>`, served as `id > since AND id <= through`. One parameter, and it turns "roughly
+  those rows plus some" into "exactly those rows". Not done here because the honest wording
+  costs nothing and a second range parameter is real surface on the route that has to satisfy
+  the access floor unaided.
+
+- **`events_view` is 517 bytes on every read, including the shell's 3-second poll.**
+  **Priority:** P4
+  Measured: 33.7 KB/s at this project's own capacity target of 200 concurrent shells, and
+  14.2 MB/day for one always-open client. Negligible at the scale this thing runs at, and the
+  field exists because an agent holding one URL cannot otherwise discover `raw=1` or learn
+  that it is reading a projection.
+
+  **How to apply, if it ever matters:** send the full note only when `since` is absent — a
+  cold reader gets it, a cursor-echoing poller gets `{mode, raw}` and nothing else. The catch
+  is that an agent resuming from a stored cursor across sessions is exactly the cold reader,
+  and it always sends a `since`. Do not do this without solving that.
+
+
+
 All three below were reported by a third-party agent after building two documents against
 v0.2.5.1 on 2026-08-19, then verified against the source.
 
@@ -381,38 +408,6 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   leave the disclosure unsigned. **Left alone: reversing a deliberate authored value is the author's
   call, and the same over-correction was already made and reverted once on the `60ch` cap.**
 
-- **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
-  produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →
-  `Cliene` → `Clien` → `Clienter` → `Cliente` → `Cliente1`. A1 already coalesces per field per
-  flush, but the flush fires when the write pipeline builds a PUT, so a pause mid-word ends a
-  batch. This works directly against `next_since`, whose reason for existing is to stop
-  histories crowding out an agent's context.
-
-  Nobody reported it for two releases because **an agent reading its own diffs never types
-  with backspaces**. Only a human does, and the human has no channel to report it.
-
-  **How to apply — coalesce at READ time, not write time.** The tempting fix is a wider flush
-  window, and it is wrong: A1 chose eager flushing deliberately because people close tabs
-  rather than tab out, which is why `pagehide` and `sendBeacon` exist. Widening the window
-  trades log cleanliness against durability. Read-time collapse dissolves that — persist
-  eagerly, present coalesced — and existing histories benefit with nothing discarded at ingest.
-
-  Collapse consecutive events sharing `actor` and `field`, keeping the **original `from`** and
-  the **final `to`**; intermediates carry nothing. Precedent exists: >10 array changes already
-  collapse to one summary event.
-
-  **Boundary: use A2's editing session (a gap of 10+ minutes), NOT a `done` event.** A third
-  party proposed the `done` boundary; it makes log readability depend on a button people do
-  not reliably press. In the session that produced this finding the button was pressed once,
-  with an empty note, and editing continued afterwards — the boundary would have landed
-  mid-session. The session gap is time-based, needs no human cooperation, and is already an
-  accepted concept here.
-
-  Known edge, worth stating so nobody files it later as a bug: a burst spanning two polls
-  collapses into two coherent events rather than one. No information lost, no duplication,
-  just less compression.
-  **Priority:** P2
-
 - **Verified: `kind: "done"` reaches no consumer, and pressing the button notifies nobody.**
   `src/events.ts:335` lists it in an allowlist and `src/routes/writes.ts` stores it. Nothing
   else in the codebase reads it. `postEvents` — the route the button calls — never queues a
@@ -546,6 +541,44 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   **Priority:** P2
 
 ## Completed
+
+- **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
+  produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →
+  `Cliene` → `Clien` → `Clienter` → `Cliente` → `Cliente1`. A1 already coalesces per field per
+  flush, but the flush fires when the write pipeline builds a PUT, so a pause mid-word ends a
+  batch. This works directly against `next_since`, whose reason for existing is to stop
+  histories crowding out an agent's context.
+
+  Nobody reported it for two releases because **an agent reading its own diffs never types
+  with backspaces**. Only a human does, and the human has no channel to report it.
+
+  **How to apply — coalesce at READ time, not write time.** The tempting fix is a wider flush
+  window, and it is wrong: A1 chose eager flushing deliberately because people close tabs
+  rather than tab out, which is why `pagehide` and `sendBeacon` exist. Widening the window
+  trades log cleanliness against durability. Read-time collapse dissolves that — persist
+  eagerly, present coalesced — and existing histories benefit with nothing discarded at ingest.
+
+  Collapse consecutive events sharing `actor` and `field`, keeping the **original `from`** and
+  the **final `to`**; intermediates carry nothing. Precedent exists: >10 array changes already
+  collapse to one summary event.
+
+  **Boundary: use A2's editing session (a gap of 10+ minutes), NOT a `done` event.** A third
+  party proposed the `done` boundary; it makes log readability depend on a button people do
+  not reliably press. In the session that produced this finding the button was pressed once,
+  with an empty note, and editing continued afterwards — the boundary would have landed
+  mid-session. The session gap is time-based, needs no human cooperation, and is already an
+  accepted concept here.
+
+  Known edge, worth stating so nobody files it later as a bug: a burst spanning two polls
+  collapses into two coherent events rather than one. No information lost, no duplication,
+  just less compression.
+  **Priority:** P2
+  **Completed:** v0.3.2.0 (2026-08-20). `coalesceForRead` collapses at read time, keeping the
+  original `from` and the final `to`, bounded by A2's session gap. Two things changed from the
+  recorded plan under review: a run that ends where it started passes through whole rather than
+  being dropped, because dropping it made the observable history depend on read cadence; and
+  `?raw=1` plus a self-describing `events_view` were added, because an agent holding one URL
+  could not otherwise tell it was reading a projection.
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
   reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.

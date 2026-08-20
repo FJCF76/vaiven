@@ -137,3 +137,12 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_since ON events(doc_id, version, id);
 -- Pruning by age scans without this.
 CREATE INDEX IF NOT EXISTS events_prune ON events(doc_id, ts);
+-- The cursor query, `WHERE doc_id = ? AND id > ? ORDER BY id`, had no index that served it.
+-- A5 added `events_since(doc_id, version, id)` when the cursor WAS a version; A8 then made
+-- it an event id and nobody re-checked. With `version` between the constrained prefix and
+-- the ordering key that index cannot answer it, so SQLite walked the rowid across EVERY
+-- document's events and filtered. Measured on 40,000 events across 50 interleaved documents,
+-- which is this project's own capacity target: `?since=0` 1.996ms -> 0.587ms, and a recent
+-- cursor 0.031ms -> 0.009ms. Both 3.4x, because the scan stopped touching fifty documents to
+-- read one. No gain on a single-document database — the whole win is not reading the others.
+CREATE INDEX IF NOT EXISTS events_cursor ON events(doc_id, id);

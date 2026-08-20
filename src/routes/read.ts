@@ -121,7 +121,7 @@ export function readByKey(
 		touchKeyById(db, row.key_id, ip);
 
 		const since = Number(url.searchParams.get("since") ?? -1);
-		const { events, nextSince } = readEvents(db, row.doc_id, since, url.searchParams.get("events"));
+		const { events, nextSince, view } = readEvents(db, row.doc_id, since, url.searchParams.get("events"), url.searchParams.get("raw"));
 
 		const body = {
 			doc_id: row.doc_id,
@@ -131,6 +131,10 @@ export function readByKey(
 			content_version: row.content_version,
 			state: safeParse(row.state),
 			events,
+			// A11's principle applied to the projection: an agent holding only this URL cannot
+			// invent `?raw=1`, and a projection it cannot see is one it will mistake for the
+			// stored record. So the body says which view it is and how to get the other.
+			events_view: view,
 			// A8: one opaque cursor to echo back, rather than three integers to choose
 			// between. It is an event id, so annotations stored at an unchanged version are
 			// still reachable and a truncated page resumes rather than skipping.

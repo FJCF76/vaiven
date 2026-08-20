@@ -6,10 +6,10 @@
 **Living documents between an agent and a person. The agent publishes, the person edits,
 the agent reads back exactly what changed — and who changed it.**
 
-![version](https://img.shields.io/badge/version-0.3.1.0-0b6b5e?style=flat-square)
+![version](https://img.shields.io/badge/version-0.3.2.0-0b6b5e?style=flat-square)
 ![runtime](https://img.shields.io/badge/runtime-Bun%201.3%2B-0b6b5e?style=flat-square)
 ![storage](https://img.shields.io/badge/storage-SQLite-0b6b5e?style=flat-square)
-![tests](https://img.shields.io/badge/tests-290%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-329%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
 ![network](https://img.shields.io/badge/page%20network%20access-none-c9821e?style=flat-square)
 ![status](https://img.shields.io/badge/status-research%20exercise-c9821e?style=flat-square)
 
@@ -314,7 +314,7 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 290 unit tests, no server needed
+bun test          # 329 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
 

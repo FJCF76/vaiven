@@ -395,3 +395,124 @@ export function fieldWarnings(state: unknown): { code: string; message: string; 
 		},
 	];
 }
+
+// ------------------------------------------------------------- read-time coalescing
+
+/** A2: a gap longer than this starts a new editing session.
+ *
+ *  It lives HERE rather than in `routes/api.ts`, where it began, because the read-time
+ *  collapse below needs it and `routes/api.ts` already imports this file — importing it
+ *  back would close a cycle. One definition of "session" for retention and for reading. */
+export const SESSION_GAP_MS = 10 * 60_000;
+
+/** One row of `events`, as stored. Coalescing works on ROWS, before they are mapped into
+ *  the public shape: `ts` is a number here and an ISO string after mapping, and subtracting
+ *  numbers beats parsing strings back. */
+export interface EventRow {
+	id: number;
+	version: number;
+	actor: string;
+	kind: string;
+	field: string | null;
+	from_value: string | null;
+	to_value: string | null;
+	op: string | null;
+	item: string | null;
+	note: string | null;
+	payload: string | null;
+	ts: number;
+	/** Present only on a row this function synthesised. Never read from the database. */
+	stored_events?: number;
+}
+
+/** Exact predicates, not truthiness. The mapper treats `""` and NULL alike; SQL does not,
+ *  and the DDL constrains neither, so an empty-string `op` would slip through a `!row.op`
+ *  test and merge two array events that name different elements. */
+function mergeable(row: EventRow): boolean {
+	if (row.kind !== "edit") return false;
+	if (typeof row.field !== "string" || row.field === "") return false;
+	// An array element event names one element. Two adds are two elements, and merging them
+	// would invent an element nobody added.
+	if (row.op !== null && row.op !== "") return false;
+	// Both endpoints must exist. The mapper omits a null endpoint, so two absent values would
+	// compare `undefined === undefined` and satisfy the continuity check below while meaning
+	// nothing at all.
+	if (typeof row.from_value !== "string" || typeof row.to_value !== "string") return false;
+	// The schema permits an `edit` to carry these. Collapsing one would drop the metadata
+	// silently, so it is a barrier instead.
+	if (row.note !== null || row.payload !== null || row.item !== null) return false;
+	return Number.isFinite(row.ts);
+}
+
+/** Whether `next` continues the run `prev` is part of. */
+function continues(prev: EventRow, next: EventRow): boolean {
+	if (prev.actor !== next.actor || prev.field !== next.field) return false;
+	// Rows arrive ordered by id, NOT by ts. A clock that steps backwards makes this negative,
+	// and a negative delta is "within" any upper bound — which would merge events an hour
+	// apart. Require the gap to be real and forward.
+	const gap = next.ts - prev.ts;
+	if (!Number.isFinite(gap) || gap < 0 || gap > SESSION_GAP_MS) return false;
+	// The value must actually be continuous. Same actor and same field do not imply it: a
+	// `?force=1` write, a conflict merge, or a write-time event dropped for `from === to`
+	// can move the value between two of one actor's edits. Without this, a stored `A → B`
+	// then `X → Y` would present as `A → Y` — a transition that never happened, in the one
+	// channel this product exists to provide.
+	return prev.to_value === next.from_value;
+}
+
+/**
+ * Collapse a run of consecutive edits into the change it amounts to.
+ *
+ * Typing one word with corrections stored seven events in a real session: `cliente` went
+ * `Clienet ` -> `Clienet` -> `Cliene` -> `Clien` -> `Clienter` -> `Cliente` -> `Cliente1`.
+ * A1 already coalesces per field per FLUSH, but the flush fires when the write pipeline
+ * builds a PUT, so any pause mid-word ends a batch. Six of those seven carry nothing a
+ * reader wants, and they work directly against `next_since`, which exists to stop histories
+ * crowding out an agent's context.
+ *
+ * Read time, not write time. A1 chose eager flushing deliberately, because people close
+ * tabs rather than tab out — `pagehide` and `sendBeacon` are in the write pipeline for that
+ * reason. Widening the flush window would trade log cleanliness against durability.
+ * Collapsing on the way out trades nothing: everything is still stored, every history
+ * already written benefits, and `?raw=1` still returns what happened.
+ *
+ * Pure and row-shaped so it can be tested against the real seven-event sequence without a
+ * server. It never mutates its input.
+ */
+export function coalesceForRead(rows: readonly EventRow[]): EventRow[] {
+	const out: EventRow[] = [];
+	let i = 0;
+	while (i < rows.length) {
+		const first = rows[i]!;
+		if (!mergeable(first)) {
+			out.push(first);
+			i++;
+			continue;
+		}
+		// Runs are found in the RAW input, before anything is dropped. If a contentless run
+		// were removed first, the events on either side of it could become adjacent and merge
+		// across activity that really happened between them.
+		let end = i;
+		while (end + 1 < rows.length && mergeable(rows[end + 1]!) && continues(rows[end]!, rows[end + 1]!)) end++;
+
+		const last = rows[end]!;
+		if (end === i) {
+			out.push(first);
+		} else if (first.from_value === last.to_value) {
+			// The run ends where it started. Do NOT merge it: a merged event here would say
+			// nothing changed, and A1 forbids a contentless event. Dropping it instead was the
+			// first draft's answer and it was wrong — `A -> B` then `B -> A` would read as zero
+			// events for an agent reading after the fact and two for the shell, which polls
+			// every few seconds. Same stored history, different observable history, decided by
+			// who happened to read and when. Passing the members through costs a little
+			// compression and keeps the log honest.
+			for (let k = i; k <= end; k++) out.push(rows[k]!);
+		} else {
+			// `from` is the value before the run began; everything else describes where it
+			// ended, so every id a reader sees is a real row id.
+			out.push({ ...last, from_value: first.from_value, stored_events: end - i + 1 });
+		}
+		i = end + 1;
+	}
+	return out;
+}
