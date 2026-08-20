@@ -175,6 +175,11 @@ button.link { border-color: transparent; color: var(--muted); text-decoration: u
    parked beside line one with the rest of the bar empty to its right, reading as a stray
    word; at the foot of the block it reads as a signature on the statement. */
 .brand { opacity: 0.55; font-variant: small-caps; letter-spacing: 0.04em; align-self: flex-end; }
+/* The notice interpolates a key label, which the caller chooses and the server clamps only at
+   80 characters (`LIMITS.labelChars`). Unbroken, that is about 480px at 12px — wider than a
+   375px phone. A flex item will not shrink below its min-content width, so without this the
+   whole bar scrolls sideways. The removed `60ch` cap never defended against this either. */
+.disclosure span { overflow-wrap: anywhere; }
 .disclosure {
 	padding: var(--space-2) var(--gutter);
 	font-size: 12px;
@@ -243,16 +248,11 @@ dialog::backdrop { background: var(--scrim); }
 .panel-head h2 { font-size: 15px; margin: 0; }
 .panel-body { padding: var(--space-1) var(--space-4) var(--space-4); max-height: 60vh; overflow-y: auto; }
 .panel-body p { margin: var(--space-3) 0; }
-	width: 100%;
-	font: inherit;
-	font-size: 14px;
-	padding: var(--space-2);
-	border: 1px solid var(--rule);
-	border-radius: 3px;
-	background: var(--surface);
-	color: var(--ink);
-	resize: vertical;
-}
+/* Removing the Done dialog in 0.3.0.0 deleted the `.panel-body textarea {` SELECTOR and left
+   its declarations behind. A selector-less block is not a no-op: the parser hunts forward for
+   the next `{`, swallows the following rule into an invalid prelude, and DROPS it — so
+   `.panel-body > p` below has been dead in production ever since. Nothing failed loudly.
+   If a rule ever stops applying for no visible reason, look up-file for an unclosed selector. */
 .panel-body > p { font-size: 13px; color: var(--muted); }
 .event { display: grid; grid-template-columns: 4.25rem 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 13px; }
 .event:last-child { border-bottom: 0; }

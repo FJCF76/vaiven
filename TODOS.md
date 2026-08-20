@@ -205,6 +205,13 @@ then priority. Completed items move to the bottom.
   - Once purpose is declared, the instance model stops being a decision and becomes a
     consequence. For an exercise, cloning is fine.
 
+  **The concrete contradiction, so it is on the record rather than in a review comment:**
+  `docs/designs/agent-onboarding.md` still defines success as *"tenant keys issued to non-author
+  humans, and documents those humans edited"*, freezes work *"until a non-author human has used
+  a document"*, and cut Approach C for serving *"an audience the kill criterion does not count"*.
+  That is adoption as the measure, in a committed design doc, contradicting this entry. Both are
+  left standing; the disagreement is marked in that document and is not settled by precedence.
+
   **The procedural half still holds: this must not ride in on a docs branch.** It is how the
   instance-model claim got asserted as settled in `docs/designs/agent-onboarding.md` without
   anyone deciding it.
@@ -307,6 +314,7 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 ## Shell
 
 - **The consent notice runs the full width of the bar, at about 184 characters per line.**
+  **Priority:** P4
   That is roughly two and a half times a readable measure (45-75), so the one sentence whose
   job is to be read and believed is set at a width that encourages skipping.
 
@@ -322,8 +330,6 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
   At 375px it already wraps to three lines and the brand mark drops to its own row. That case
   looks right and should not regress.
-  **Priority:** P4
-
 
 - **The consent disclosure presupposes a sender who often does not exist.** `src/shell/shell.js:508`
   reads: *"Edits here are recorded as "Fernando" and shared with whoever sent you this link.
