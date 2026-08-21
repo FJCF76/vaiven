@@ -2,6 +2,70 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.3.0] - 2026-08-21
+
+The site did not come back after a reboot, because the deploy had never enabled it.
+
+### Fixed
+
+- **`deploy/sync.sh` enabled the backup timer and never the service it backs up.** The unit
+  file has carried `WantedBy=multi-user.target` since Phase 0, but `WantedBy` does nothing
+  until `systemctl enable` creates the symlink, and the deploy only ever ran `restart`. So
+  the unit sat at `disabled` on the production host from the first deployment onward.
+
+  `Restart=always` hid it completely. It covers crashes, not boots, so the service recovered
+  from everything that ever happened to it and looked healthy for as long as the box stayed
+  up — which was every day between Phase 0 and 2026-08-20. On the first reboot, Caddy came
+  back (its unit *is* enabled) and served 502 to an upstream that was never started.
+
+  A deploy now enables the service and then refuses to claim success unless the unit really
+  reports `enabled`.
+
+### Changed
+
+- **The deploy verifies what it claims, instead of asserting it.** Three checks that each
+  looked fine and each accepted a broken host:
+
+  `systemctl is-enabled` exits 0 for `static`, `enabled-runtime`, `indirect` and `generated`
+  as well as `enabled`, and of those only `enabled` starts a unit at boot. Verified on this
+  host: `vaiven-backup.service` has no `[Install]` section at all and `is-enabled --quiet`
+  still exits 0 for it. The check compares the reported state now, rather than trusting an
+  exit code that answers a different question.
+
+  `is-active` says the process launched, not that it answers. `Type=simple` reports success
+  the moment `ExecStart` execs. The deploy now fetches `/guide.md` from the bind address and
+  requires HTTP 200 — `curl -f` alone exits 0 on a 3xx, so a redirect away from the app used
+  to count as serving.
+
+  One good response also proves very little, because `Type=simple` with `Restart=always`
+  means a service that dies and respawns can be sampled while it happens to be up. The check
+  asks twice, longer than `RestartSec` apart, and reports a restart loop if the second
+  request fails.
+
+- **A failed deploy is no longer written into the boot path.** `enable` runs only after the
+  service has proved it serves, so a deploy that comes up broken is not also configured to
+  come back broken. This does not cover the upgrade case, where the unit was already enabled;
+  that needs staged releases and rollback, which `TODOS.md` now records as P1.
+
+- **`restart` is guarded rather than left to `set -e`.** A failed start exited the script
+  before the `journalctl` dump ran, so the one thing that said *why* never printed.
+
+- **An incomplete config names the missing key.** Previously a missing `VAIVEN_APP_HOST`
+  produced `not serving http://:/guide.md as `, which names nothing.
+
+### Added
+
+- **`deploy/sync.sh --verify-only`** checks a host without deploying to it: is it serving,
+  and will it come back after a reboot. It needs no `sudo` when the config is supplied
+  through the environment, which is also what lets the checks be tested.
+
+- **`test/deploy.test.ts`** executes those checks against a stub `systemctl` and `curl` on
+  `PATH`, covering `enabled`, `disabled`, `static`, `enabled-runtime`, `indirect` and an
+  empty state, non-200 responses, a service that answers once and then dies, an IPv6 bind
+  address, each missing config key, and a junk retry budget. The `curl` stub records its own
+  arguments, because a stub that ignores them passes just as happily when the script drops
+  the URL or the `Host` header.
+
 ## [0.3.2.0] - 2026-08-20
 
 Typing one word with corrections stored seven events. It now reads back as one.
