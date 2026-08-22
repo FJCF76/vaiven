@@ -2,6 +2,50 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.5.0] - 2026-08-22
+
+Two backlog entries, one of which is a bug nobody could have seen from the code alone.
+
+### Changed
+
+- **`TODOS.md` records that a warning added after a document is published never reaches it.**
+  `warnings` is computed at write time and stored on the doc row; the serve path recomputes it
+  and discards it (`src/routes/content.ts:105` destructures only `{ html }`). Nothing backfills.
+  So every check added after a document was last published is invisible on that document until
+  someone republishes it, and nothing prompts anyone to.
+
+  **Measured on production: 0 of 97 stored warning arrays are non-empty**, including
+  `added_doctype`. One document uses `position:sticky` in a table header; its stored value is
+  `[]`, and running the current detector over its exact stored content returns `["no_viewport"]`.
+  It was last republished six hours before that check shipped. That is the whole mechanism behind
+  an author shipping a sticky table header and having no way to know: the warning that would have
+  told them exists, works, and is documented, and was already inert for their document.
+
+  The entry also records what **not** to do. Recomputing on read is what write-time computation
+  replaced, and the reason was not performance — serve-time computation made the unauthenticated
+  content host a writer. A lazy "recompute on read, then store" scheme walks straight back into
+  that. And the 903 ms / 90 s figures in `src/inject.ts:167` measure a quadratic scan that was
+  already fixed, so they are not a reason to avoid a backfill; the real cost is unmeasured.
+
+- **`TODOS.md` records the opt-in viewport layout mode.** `position: sticky`, `position: fixed`
+  and viewport height units are inert in a published document: the shell sizes the frame to its
+  content's own `scrollHeight`, so the frame has a viewport but not an independently scrolling
+  one, and sticky never gets a scrollport. That is a **layout decision, not a security one** —
+  no CSP directive or sandbox flag requires it — and it removes full-height sections, pinned
+  toolbars and anything scroll-driven.
+
+  Recorded with the shape the author prefers: a `layout` field on publish, `"flow"` (today's
+  behaviour, the default) or `"viewport"`, with mobile ignoring the flag so the scroll-jail
+  reasoning stays exactly where it applies. Also recorded: the cheaper alternative of pushing
+  viewport height and scroll offset in as CSS custom properties, and that changing the scroll
+  model for everyone is explicitly not wanted.
+
+  Two regimes where "inert" is too strong, both found while writing it down: the frame height is
+  `Math.min(height, 20000)`, so content past 20,000px leaves the frame smaller than its content
+  and it gains a real scrollbar; and the frame starts at `height: 60vh` before the first resize
+  message lands. Neither is something to rely on, but both mean a test written against "always
+  inert" would be wrong.
+
 ## [0.3.4.0] - 2026-08-22
 
 The author said what this is for, so three rules that measured the wrong thing are gone.
