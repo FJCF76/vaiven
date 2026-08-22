@@ -495,6 +495,55 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   is.
   **Priority:** P4
 
+## Documents don't accumulate
+
+Reviewed design: `docs/designs/documents-dont-accumulate.md` (author's brief 2026-08-22, through
+`/autoplan`). Build order **1 → 3 → 2 → 4**; items 3 and 2 swapped because candidate/promote
+needs an active pointer.
+
+- **1. Author in modules, assemble on publish.**
+  **Priority:** P2
+  Docs only, no server work. Change the canonical publish example to a built `dist.html`, and add
+  `guide/authoring.md`. **Present the layout as one starter scaffold among several structurally
+  different examples, not as the anatomy of a document** — a single prescribed layout teaches a
+  default architecture and biases agents away from canvas, generated layouts and tiny documents.
+  Only `dist.html` is contractual. **Nothing here may add a step to the first publish.** State
+  explicitly that the agent never hand-edits the assembled file.
+
+- **3. Content as releases: versioned rows, active pointer, restore.**
+  **Priority:** P2
+  Prerequisite of item 2. `content_releases` is its own table so the 3-second poll never walks a
+  4 MB overflow chain (A5's reason). A release carries status, validation result, runtime contract
+  marker, state shape marker and an idempotency key — not just a blob. Fold the `warnings`
+  backfill (see the Warnings section) into the same row rather than touching it twice.
+  **`content_version` becomes a promotion/restore-only activation counter.**
+
+- **2. Candidate/promote validation in the client sandbox.**
+  **Priority:** P2
+  Publish creates a candidate that becomes active only on successful validation, rendered in the
+  sandboxed iframe the shell already owns. **Not on the server** — that would execute untrusted
+  model code on the host holding the DB and tenant keys, and collides with `MemoryMax=768M` and
+  `RestrictNamespaces=true`. Declared assertions are **mandatory**: without them validation means
+  only "did not throw uncaught", which a `try`/`catch` satisfies, and the candidate can spoof
+  `ready`. One pending candidate per document; promotion is a CAS. Two error codes do not exist
+  yet (candidate-never-validated, restore-across-contract).
+
+- **4. Runtime components — controllers, never nodes.**
+  **Priority:** P3
+  `Vaiven.list(el, {create, update})` over author-owned DOM; the component owns identity, focus,
+  pointer-in-flight and move/remove, the author owns every element. Enum handling is a value
+  utility, **not** a `<select>` generator. Universal infrastructure invents no ARIA roles and no
+  keyboard model. Acceptance is adversarial tests (IME composition, rapid deletion, reorder during
+  pointer activation, duplicate keys), **not** the deletion of `guide.md:160-232` — and that
+  deletion lands *with* item 4, never before it.
+
+- **E2 — publish an optional source bundle alongside `dist.html`.**
+  **Priority:** P3
+  Deferred from the review. Vaivén only ever receives `dist.html`, so "the sources are on disk and
+  git covers the why" describes a machine Vaivén cannot see; the sources can vanish while the
+  artifact survives. This is the direct answer to the strongest objection raised against item 1.
+  Deferred because it changes the storage model and the per-tenant byte quota.
+
 ## Warnings
 
 - **A warning added after a document is published never reaches it.**
