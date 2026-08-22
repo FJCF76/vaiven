@@ -6,10 +6,10 @@
 **Living documents between an agent and a person. The agent publishes, the person edits,
 the agent reads back exactly what changed — and who changed it.**
 
-![version](https://img.shields.io/badge/version-0.3.2.0-0b6b5e?style=flat-square)
+![version](https://img.shields.io/badge/version-0.3.7.0-0b6b5e?style=flat-square)
 ![runtime](https://img.shields.io/badge/runtime-Bun%201.3%2B-0b6b5e?style=flat-square)
 ![storage](https://img.shields.io/badge/storage-SQLite-0b6b5e?style=flat-square)
-![tests](https://img.shields.io/badge/tests-329%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-370%20unit%20%2B%206%20live%20suites-0b6b5e?style=flat-square)
 ![network](https://img.shields.io/badge/page%20network%20access-none-c9821e?style=flat-square)
 ![status](https://img.shields.io/badge/status-research%20exercise-c9821e?style=flat-square)
 
@@ -314,9 +314,17 @@ model-authored HTML.
 ## Tests
 
 ```bash
-bun test          # 359 unit tests, no server needed
+bun test          # 370 unit tests, no server needed
 bun run typecheck # tsc --noEmit
 ```
+
+Two of those files test the manual rather than the codebase. `test/guide.test.ts` guards what
+every served page says — including that no page ships an unexpanded `$HOST`-style placeholder,
+which happened once. `test/authoring-build.test.ts` goes further and *runs* the manual: it
+extracts the build script out of `guide/authoring.md` and executes it, against a missing marker,
+a missing source and a splice that dies part-way through. A snippet published under `guide/` is
+standing instruction for every agent that reads the page, so it is executable content and gets
+tested like any other.
 
 Six more suites run against a **live** server, because the things they check (headers, the
 proxy, the certificate, cross-origin behaviour, real concurrency) cannot be proven by calling
@@ -431,9 +439,11 @@ restarting one.
 | [`guide/app-mode.md`](guide/app-mode.md) | Depth on app mode, for when the person can add, remove or reorder rows. `guide.md` already covers this well enough to build from; this page is the longer version. |
 | [`guide/errors.md`](guide/errors.md) | Every error code and what to do about it. |
 | [`guide/limits.md`](guide/limits.md) | Size limits, quotas and rate limits. |
+| [`guide/authoring.md`](guide/authoring.md) | How to author a document you will republish: assembling one `dist.html` from sources you keep, so the parts that already work stop being rewritten. |
 | [`docs/designs/vaiven-v1.md`](docs/designs/vaiven-v1.md) | The reviewed design doc: why it is built this way, and the amendments layered on the spec. |
 | [`docs/designs/well-formed-urls.md`](docs/designs/well-formed-urls.md) | Why the manual stores real URLs rather than a placeholder, and how the serve-time rewrite works. |
 | [`docs/designs/agent-contract.md`](docs/designs/agent-contract.md) | Why a minted key now carries its own URLs, and why the rule is enforced by the type system rather than by a comment. |
 | [`docs/designs/agent-onboarding.md`](docs/designs/agent-onboarding.md) | Why the error hints stopped naming a CLI, and what a keyless agent is told instead. |
+| [`docs/designs/documents-dont-accumulate.md`](docs/designs/documents-dont-accumulate.md) | Why an agent-authored document is regenerated whole every time, and the four items that change it. |
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, per version. |
 | [`TODOS.md`](TODOS.md) | What is known to be missing, with priorities. |
