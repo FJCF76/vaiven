@@ -20,11 +20,36 @@ Requirements live in `vaiven-spec.md` (local only, gitignored, never committed).
 document records what office hours decided on top of that spec, what the review pipeline
 found, and the order the work happens in.
 
-## Kill criterion
+## Kill criterion — RETIRED BY THE AUTHOR, 2026-08-22
 
-Ten documents I actually needed, published within 30 days of Phase 4 landing, each used by
+~~Ten documents I actually needed, published within 30 days of Phase 4 landing, each used by
 at least one human who is not me. If that number is zero at day 30, stop building and write
-up why. Added because the review correctly noted this plan had no definition of failure.
+up why.~~ Added because the review correctly noted this plan had no definition of failure.
+
+**Purpose, declared by the author 2026-08-21**, in full: *"This is for personal research, and
+maybe, some personal use, I will finish it after a few more sprints."*
+
+**Retirement, confirmed by the author 2026-08-22**, asked as a direct question with the
+alternative of leaving it standing.
+
+A criterion counting humans who are not the author cannot measure a project whose purpose is the
+author's own research. It would read zero at day 30 whether the work had succeeded or failed.
+
+**Nothing replaces it as a count**, deliberately. Anything that makes usage countable is solving
+for a goal this project does not have. What stands in its place is the author's time budget: a
+few more sprints. That is a stopping rule, not a completion test, and it is recorded as one
+rather than dressed up as a metric. The project ends by arriving or by the author deciding it
+has, not by failing a measurement.
+
+**How this was resolved matters as much as the answer.** A draft on 2026-08-21 struck this
+criterion and captioned it "retired by the author" on the strength of the purpose sentence
+alone. That was false — the author had answered a question about purpose and said nothing about
+this criterion. Adversarial review caught it before it landed. Attributing an inference to the
+author is not a legitimate way to settle a recorded contradiction; it is the rule in `CLAUDE.md`
+being broken while wearing the author's name, and it is precisely how "now decided: one
+operator-provisioned instance" got into `docs/designs/agent-onboarding.md` when nobody had
+decided it. The retirement above is dated a day later because that is when it was actually asked
+and actually answered.
 
 ## The Universality Invariants
 
@@ -986,7 +1011,7 @@ were not written. This list is assembled by hand instead. P1 blocks Phase 1.
 | # | Phase | Decision | Class | Principle | Rationale |
 |---|---|---|---|---|---|
 | 1 | CEO | Mode = SELECTIVE EXPANSION | Mechanical | P6 | autoplan default |
-| 2 | CEO | Add kill criterion | Mechanical | P1 | plan had no failure definition |
+| 2 | CEO | Add kill criterion **(retired 2026-08-22)** | Mechanical | P1 | plan had no failure definition; retired by the author once purpose was declared, adoption never being the measure |
 | 3 | CEO | Premise 4 withdrawn, named as a limit | Mechanical | P1 | both voices; asserting it away is the 6-month regret |
 | 4 | CEO | Premise 1 amended, republish co-equal | Mechanical | P1 | scope was unjustified by stated purpose |
 | 5 | CEO | `actor` reframed as source labeling | Mechanical | P5 | both voices; the claim was false as written |

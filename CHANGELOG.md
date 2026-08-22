@@ -2,6 +2,42 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.4.0] - 2026-08-22
+
+The author said what this is for, so three rules that measured the wrong thing are gone.
+
+### Changed
+
+- **The kill criterion is retired, the adoption-based success criteria are withdrawn, and the
+  non-author-use freeze is lifted.** All three assumed success meant people other than the author
+  using Vaivén. Asked what the project is for and what would count as finished, the author
+  answered: **personal research, and possibly some personal use, finishing after a few more
+  sprints.** A criterion counting humans who are not the author cannot measure that. It would
+  have read zero at day 30 whether the work had succeeded or failed.
+
+  Nothing counting anything replaces them. Anything that makes usage countable is solving for a
+  goal this project does not have. In place of a completion test there is a time budget — a few
+  more sprints — recorded as a budget rather than dressed up as a metric, because that is what it
+  is. Lifting the freeze removed a block; it did not schedule the five onboarding items it held.
+
+  The P1 that carried this closes. The instance-model question closes with it: it was only ever
+  load-bearing as a way of counting users, so for personal research cloning is fine.
+
+- **How it was resolved is recorded alongside what was resolved.** Two design documents disagreed
+  about what success meant. They were left standing, unsettled by precedence, recency or
+  specificity, until the person whose call it was made it — which is the resolution path the rule
+  in the working notes exists to keep open.
+
+  A draft of these edits took the author's one sentence about purpose and reported all three
+  consequences as their decisions, captioned "retired by the author". They had decided none of
+  them; they had answered a question about purpose. An adversarial review pass caught it, the
+  documents were rewritten to separate what the author said from what was inferred, and then the
+  author was actually asked. **Attributing an inference to the author does not resolve a recorded
+  contradiction — it launders one**, and it is the same failure that once put a never-made
+  instance-model decision into `docs/designs/agent-onboarding.md` as settled. The near-miss is
+  left visible in `TODOS.md` and in both design docs rather than tidied away, because a guard is
+  only worth anything if you can see it catching something.
+
 ## [0.3.3.0] - 2026-08-21
 
 The site did not come back after a reboot, because the deploy had never enabled it.

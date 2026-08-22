@@ -179,51 +179,64 @@ then priority. Completed items move to the bottom.
   guide.md claims "every code, so you never have to fetch anything to recover". Delete it or
   document it. **Priority:** P2
 
-- **Frozen until a non-author human has used a document:** the role gate naming the manual's two
-  audiences, section reordering so the agent HTTPS path is first, a first-success probe, and
-  regression guards over guide text. Unfrozen by evidence, not by preference. See
+- **~~Frozen until a non-author human has used a document~~ — lifted 2026-08-22:** the role gate
+  naming the manual's two audiences, section reordering so the agent HTTPS path is first, a
+  first-success probe, and regression guards over guide text. The trigger was an adoption event
+  and the author lifted it with the criterion it rested on. **Lifting a block does not schedule
+  work** — these return to ordinary priority and get done on merit. See
   `docs/designs/agent-onboarding.md`.
+  **Priority:** P3
 
-- **Purpose and completion criterion are undeclared.**
-  **Priority:** P1
-  The recorded kill criterion — ten documents used by non-author humans within 30 days —
-  assumes **adoption is the measure**. It is not. This is a theoretical exercise, not a product
-  looking for users, and the criterion was imported from a template that does not describe the
-  work. Until purpose and completion criterion are written down, no instance-model decision is
-  meaningful.
+- **Purpose and completion criterion — CLOSED 2026-08-22.**
+  **Priority:** resolved
+  Asked what this is for and what would count as finished, the author answered on 2026-08-21, in
+  full: *"This is for personal research, and maybe, some personal use, I will finish it after a
+  few more sprints."* Asked on 2026-08-22 what followed for the three records built on the
+  opposite assumption, the author confirmed all three.
 
-  Consequences, so nobody re-derives them:
-  - The earlier note here argued that self-hosting by cloning makes adoption unobservable and
-    therefore disables the criterion. If adoption is not the measure, unobservable adoption is
-    not a defect, it is irrelevant. The instance model was only ever load-bearing as a way of
-    counting users.
+  **Purpose:** personal research, possibly some personal use. Not a product looking for users —
+  stated by the author, not inferred.
+
+  **In place of a completion criterion, a time budget:** a few more sprints. Recorded as a budget
+  and not as a test, because that is what it is. **This is not a gap to be closed.** A time
+  budget is a legitimate way to run personal research, and the honest record of it is the budget
+  itself, not a metric invented to look rigorous. The project ends by arriving or by the author
+  deciding it has.
+
+  **Consequences, decided by the author 2026-08-22:**
+  - The kill criterion in `docs/designs/vaiven-v1.md` is **retired**.
+  - The adoption-based success criteria in `docs/designs/agent-onboarding.md` are **withdrawn**.
+  - The freeze above is **lifted**.
+
+  Consequences that follow and need no further decision:
   - **Do not propose adoption metrics as a workaround.** Anything that makes usage countable is
     solving for a goal this project does not have.
-  - The question worth a one-pager is *what is this for, and what would count as finished* —
-    not *how should this be distributed*. The author has asked to be in the room for that one,
-    so do not run it unattended.
-  - Once purpose is declared, the instance model stops being a decision and becomes a
-    consequence. For an exercise, cloning is fine.
+  - **The instance model stops being a decision and becomes a consequence.** It was only ever
+    load-bearing as a way of counting users. For personal research, cloning is fine.
 
-  **The concrete contradiction, so it is on the record rather than in a review comment:**
-  `docs/designs/agent-onboarding.md` still defines success as *"tenant keys issued to non-author
-  humans, and documents those humans edited"*, freezes work *"until a non-author human has used
-  a document"*, and cut Approach C for serving *"an audience the kill criterion does not count"*.
-  That is adoption as the measure, in a committed design doc, contradicting this entry. Both are
-  left standing; the disagreement is marked in that document and is not settled by precedence.
+  **How it was resolved is the part worth keeping.** Two design documents disagreed and were left
+  standing — unsettled by precedence, recency or specificity — until the person whose call it was
+  made it. That is the resolution path the rule in `CLAUDE.md` exists to hold open, and it is why
+  recording the disagreement beat tidying it away.
 
-  **The procedural half still holds: this must not ride in on a docs branch.** It is how the
-  instance-model claim got asserted as settled in `docs/designs/agent-onboarding.md` without
-  anyone deciding it.
+  **It was nearly resolved the forbidden way, twice over, on 2026-08-21.** A draft took the
+  purpose sentence and reported all three consequences as the author's decisions, captioned
+  "retired by the author" and "withdrawn". The author had answered a question about purpose and
+  said nothing about any of them. Adversarial review caught it before it landed; the documents
+  were rewritten to separate what the author said from what the writer inferred, and then the
+  author was actually asked. **Attributing an inference to the author does not resolve a recorded
+  contradiction — it launders one, and it is the same failure that put "now decided: one
+  operator-provisioned instance" into `docs/designs/agent-onboarding.md` when nobody had decided
+  it.** The one-day gap between the purpose declaration and these consequences is that correction,
+  and it is left visible on purpose.
 
-  Where this stands, as of 2026-08-20: the question the exercise set out to answer — can an
-  agent publish an editable surface and read back an attributed diff of what a person changed —
-  has evidence behind it. Apps published, content republished repeatedly with state intact,
-  concurrent writes from both sides without collision, the capability boundary verified with
-  live 403s, and a defect review that mostly held up against the code. The open question is
-  therefore **is there anything this exercise still needs to answer**, and if not it closes for
-  having arrived rather than being killed for lack of users. The current criterion cannot reach
-  that ending.
+  Where the exercise stands: the question it set out to answer — can an agent publish an editable
+  surface and read back an attributed diff of what a person changed — has evidence behind it.
+  Apps published, content republished repeatedly with state intact, concurrent writes from both
+  sides without collision, the capability boundary verified with live 403s, and a defect review
+  that mostly held up against the code. The remaining question is **is there anything this
+  exercise still needs to answer**, and it can now close for having arrived rather than for lack
+  of users.
 
 ## API
 
@@ -424,9 +437,10 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   **Recorded as a finding, not a decision.** The case it was built for (A10, decision 19) is
   the two-party asynchronous one: the editor is not the agent's principal, and only a note
   recovers intent the diff cannot — E2 showed "added extra budget" and "cut 6000 to 900, added
-  a 5000 line" describing the same edit. That case has never occurred; the kill criterion is
-  still 0 of 10. If it is cut, cut the button and keep the idea for a note wired to the
-  webhook, so it actually notifies.
+  a 5000 line" describing the same edit. That case has never occurred, which is the whole point;
+  it used to add "the kill criterion is still 0 of 10", dropped because that criterion was retired
+  on 2026-08-22 and the case not having occurred stands without it. If it is cut, cut the button
+  and keep the idea for a note wired to the webhook, so it actually notifies.
   **Priority:** P3
 
 - **A malformed link fragment reports as missing.** `src/shell/shell.js:42-43` says *"This
