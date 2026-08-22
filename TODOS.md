@@ -353,6 +353,50 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
 ## Shell
 
+- **Documents have no viewport, and that is a layout decision wearing security's clothes.**
+  **Priority:** P3
+  `position: sticky`, `position: fixed`, `100vh`/`dvh` and anything scroll-driven are inert
+  inside a published document. Precisely: the frame has a viewport, but not an *independently
+  scrolling* one. The shell sizes it to the content's own `scrollHeight`
+  (`src/shell/helper.js:263` → `src/shell/shell.js:447`), so viewport and content are the same
+  height and the frame never scrolls. Sticky needs a scrollport that scrolls; it does not get one.
+
+  **Two regimes where that is not true**, both worth knowing before anyone tests this. The height
+  is `Math.min(height, 20000)`, so content taller than 20,000px leaves the frame smaller than its
+  content — nothing disables scrolling on the element, so it gains its own scrollbar and sticky
+  starts working, inside a 20,000px box. And `src/shell/shell.css:226` starts the frame at
+  `height: 60vh` before the first resize message arrives, so there is a brief window at load with
+  a real scrolling viewport. Neither is a design anyone should rely on; both mean "always inert"
+  is too strong a statement to build a test around.
+
+  **The reason is real but narrow.** `src/shell/shell.css:59` states it: on mobile the shell
+  scrolls and the iframe never does, because a nested scroll region is a scroll jail on a phone.
+  Nothing in the CSP or the sandbox requires this — no directive, no sandbox flag. It is a
+  layout choice, and it removes a whole class of design: full-height sections, pinned toolbars,
+  anything reacting to scroll position.
+
+  **Preferred shape, from the author:** a `layout` field on `PUT /content` and on create.
+  `"flow"` is today's behaviour and the default, so nothing changes for existing documents;
+  `"viewport"` gives the frame a fixed height and lets it scroll itself, so sticky, fixed and
+  viewport units work natively with no emulation. **Mobile ignores the flag and stays on
+  `flow`**, which keeps the scroll-jail reasoning exactly where it applies. The author estimates
+  the cost as a field in the publish call and a branch in the resize protocol; that is the
+  estimate to check, not a costing. A persisted field also needs validation, a schema change,
+  create/update/read behaviour, and the resize protocol needs a defined height source plus
+  answers for keyboard scrolling, focus, anchors and content taller than the frame. It also gives the `no_viewport` warning
+  something actionable to say: *"you used sticky in flow mode — republish with layout: viewport
+  or drop it."*
+
+  **Cheaper alternative if the flag is too invasive:** the helper is already inside the frame,
+  so the shell could push its own viewport height and scroll offset in as CSS custom properties.
+  That unblocks full-height layout and emulated sticky without touching the scroll model. Less
+  clean, sticky still is not native, but a fraction of the work.
+
+  **Explicitly not wanted: changing the scroll model for everyone.** That breaks the mobile case
+  the current design was built around.
+
+  Does not block cycle 3. The author asked for this not to be rushed.
+
 - **The consent notice runs the full width of the bar, at about 184 characters per line.**
   **Priority:** P4
   That is roughly two and a half times a readable measure (45-75), so the one sentence whose
@@ -450,6 +494,52 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
   message is clear, actionable and blames nobody, which is why it should stay close to what it
   is.
   **Priority:** P4
+
+## Warnings
+
+- **A warning added after a document is published never reaches it.**
+  **Priority:** P2
+  `warnings` is computed at write time (`src/routes/writes.ts:449`) and stored on the doc row.
+  The serve path recomputes it and throws it away — `src/routes/content.ts:105` destructures
+  only `{ html }` from `prepareContent`. Nothing backfills. So every check added after a
+  document was last published is invisible on that document until it is republished, which
+  nothing prompts anyone to do.
+
+  **Measured on production, 2026-08-22: 0 of 97 stored warning arrays are non-empty.** That is
+  not a claim that all 97 contain warning-triggering markup — only that none of them records a
+  warning, including `added_doctype`. One document uses `position:sticky` in a table header; its
+  stored `warnings` is `[]`, and running the current detector over its exact stored content
+  returns `["no_viewport"]`. It was last republished 2026-08-19 18:07, and the check shipped
+  2026-08-20 00:08, six hours later.
+
+  The author reported shipping a sticky table header and having "no way to know". The timing and
+  the stale array are what is measured here; they make that report straightforwardly explainable
+  — the warning that would have told them exists, works, and is documented, and was already inert
+  for their document before it was ever written.
+
+  **Do not fix this by recomputing on read.** That is what write-time computation replaced, and
+  the reason was not performance: `src/routes/writes.ts:446` records that serve-time computation
+  "made the unauthenticated content host a writer", and `:585` records the second half — warnings
+  appeared only on a later read, so an agent that published and saw a clean response concluded it
+  was clean. A lazy "recompute on read when the stored version is behind, then store it" scheme
+  reintroduces the first problem exactly: a write from the unauthenticated `GET /c/:id` path.
+
+  That leaves a backfill that runs outside the read path. A CLI verb, run by the deploy that adds
+  a warning code, re-running `prepareContent` over stored content and updating `docs.warnings`.
+  Pair it with a `warnings_version` column so the backfill knows which documents are behind.
+  Idempotence is not enough on its own: the backfill must write conditionally on the
+  `content_version` it read, or a publish landing mid-backfill has its newer, correct warnings
+  overwritten by the older recomputation. It should also touch only the derived warning columns
+  — not `updated_at` or anything else a reader can see — or a maintenance pass looks like an edit.
+
+  Whatever is chosen, the deploy that adds a new warning code has to run it, or the new check
+  measures only documents published after it and silently reports nothing about the rest.
+
+  Cost is not the obstacle it looks like. The 903 ms / 90 s figures in `src/inject.ts:167` are
+  often misread as the price of `prepareContent` — they measure a **quadratic scan that was
+  fixed**, and the note right below them says the current pass "touches each character once".
+  The real cost of a backfill over 97 documents is unmeasured, and should be measured rather
+  than assumed in either direction.
 
 ## Product
 
