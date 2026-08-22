@@ -499,16 +499,7 @@ v0.2.5.1 on 2026-08-19, then verified against the source.
 
 Reviewed design: `docs/designs/documents-dont-accumulate.md` (author's brief 2026-08-22, through
 `/autoplan`). Build order **1 → 3 → 2 → 4**; items 3 and 2 swapped because candidate/promote
-needs an active pointer.
-
-- **1. Author in modules, assemble on publish.**
-  **Priority:** P2
-  Docs only, no server work. Change the canonical publish example to a built `dist.html`, and add
-  `guide/authoring.md`. **Present the layout as one starter scaffold among several structurally
-  different examples, not as the anatomy of a document** — a single prescribed layout teaches a
-  default architecture and biases agents away from canvas, generated layouts and tiny documents.
-  Only `dist.html` is contractual. **Nothing here may add a step to the first publish.** State
-  explicitly that the agent never hand-edits the assembled file.
+needs an active pointer. Item 1 shipped in v0.3.7.0; **item 3 is next.**
 
 - **3. Content as releases: versioned rows, active pointer, restore.**
   **Priority:** P2
@@ -735,6 +726,21 @@ that the service serves and is enabled at boot; these are the hazards it does no
   **Priority:** P2
 
 ## Completed
+
+- **1. Author in modules, assemble on publish.** `guide/authoring.md` ships three structurally
+  different starting points with only `dist.html` contractual, and the canonical publish example
+  is now a built file. The first publish still takes exactly one call.
+
+  **What this cost that the item did not predict:** the build script in the page was wrong five
+  ways in draft — no atomic write, GNU-only `sed Q`, a missing marker building "successfully",
+  the script placed in `<head>`, and a false claim that assets were inlined. None were visible by
+  reading; all were found by executing it. `test/authoring-build.test.ts` now extracts the script
+  from the published page and runs it, and every guard is mutation-tested.
+
+  **How to apply to items 2, 3 and 4:** a shell or JS snippet in `guide/` is executable
+  instruction for every agent that reads it, not illustration. Run it, both paths, before it
+  ships.
+  **Completed:** v0.3.7.0 (2026-08-22)
 
 - **Event coalescing leaves keystroke residue in the log.** Typing one word with corrections
   produced seven events in the 2026-08-19 session: `cliente` went `Clienet ` → `Clienet` →

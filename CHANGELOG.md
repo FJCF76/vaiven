@@ -2,6 +2,61 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.7.0] - 2026-08-22
+
+Authoring a document you will republish, and a build script that is tested rather than
+merely printed.
+
+### Added
+
+- **`guide/authoring.md`** — the first of the four items from
+  `docs/designs/documents-dont-accumulate.md`. Publishing takes one file; that says nothing
+  about how many you author. The page gives three structurally different starting points (a
+  single file, split by concern, generated) and is explicit that **only `dist.html` is
+  contractual** — a canvas document, a generated layout and a forty-line form do not want the
+  same tree, and prescribing one would teach a default architecture the product does not have.
+  Nothing on it adds a step to a first publish.
+
+  It also carries the rules that only show up once you assemble: the script belongs before
+  `</body>`, not in `<head>`, where it would run before the body exists and every
+  `getElementById` would return `null`; a literal `</script>` inside a JavaScript string ends
+  the script element; and nothing may precede the doctype, or the document renders in quirks
+  mode. Vaivén never receives your sources and cannot recover them.
+
+- **`test/authoring-build.test.ts`** — extracts the build script *from the published page* and
+  runs it. A snippet in a guide is standing instruction for every agent that reads it, so it is
+  executable content, and asserting against a copy pasted into a test would only prove the copy
+  works. Eleven cases cover the happy path, both markers missing independently, a duplicated
+  marker, two markers sharing a line, a missing source, and a splice that dies part-way through.
+  Each guard was mutation-tested: removing it makes a test fail.
+
+### Changed
+
+- **The canonical publish example is `--data-binary @dist.html`.** The filename is only a
+  filename — a document you write once still publishes exactly as it is, under whatever name you
+  gave it.
+
+### Fixed
+
+- **The build script this release publishes was wrong five ways in draft, and all five would
+  have shipped to every agent that read the page.** It wrote straight to `dist.html`, so any
+  failure destroyed the last good build and left a truncated file that
+  `curl --data-binary @dist.html` would still publish. It used `sed Q`, a GNU extension that
+  BSD `sed` on macOS and busybox both reject, on a script that runs wherever the document is
+  authored. A `page.html` that had lost its marker built successfully, appending the style and
+  script after `</html>` and installing that over the working document. The script landed in
+  `<head>`. And the prose claimed fonts and images became `data:` URIs "in the same pass" while
+  the script never touched them, which under `connect-src 'none'` means assets that simply fail.
+
+  The splice is now POSIX `awk`, verified identical under gawk, mawk and busybox awk, and it
+  counts its markers before writing and re-reads the assembled file afterwards. Verifying the
+  artifact catches what verifying the inputs does not.
+
+- **Corrected a factual claim about quirks mode.** The draft said a leading comment or blank
+  line forces `BackCompat`. Checked in Chromium: comments and blank lines before the doctype are
+  tolerated, and it is a tag or stray text that triggers quirks. The A14 bug this warns about
+  was caused by an injected `<script>` specifically.
+
 ## [0.3.6.0] - 2026-08-22
 
 The ceiling this project actually has, reviewed and written down.
