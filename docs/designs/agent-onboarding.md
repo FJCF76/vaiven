@@ -95,6 +95,11 @@ test for this decision.
 **Approach C was approved, then cut.** Both CEO voices agreed 6/6 that it served an audience
 the kill criterion does not count. Ship the hygiene fix; freeze the rest.
 
+*(2026-08-22: this reason rested on the kill criterion, now retired, so "an audience it does not
+count" is every audience and the rationale has collapsed. **The cut is not thereby reversed.**
+Approach C should be re-argued on its merits if anyone wants it, never reinstated by the collapse
+of the argument that killed it — an argument failing is not the opposite argument succeeding.)*
+
 ### In scope
 
 1. **The four runtime hints** — `src/routes/api.ts:95,115,132,218` tell a caller to run
@@ -107,12 +112,14 @@ the kill criterion does not count. Ship the hygiene fix; freeze the rest.
 4. Judgment call, flagged: the same defect in `guide/errors.md` and `guide/limits.md`, which
    also name CLI commands at a reader who cannot run them. Identical class, one line each.
 
-### Frozen until a non-author human has used a document
+### ~~Frozen until a non-author human has used a document~~ — LIFTED BY THE AUTHOR, 2026-08-22
 
 Role gate, section reordering, first-success probe, optional-save prose, new regression guards.
 
-*(This gate assumes adoption is the measure. See the recorded contradiction under "Success
-criteria" below — the freeze stands, its stated trigger is under question.)*
+*(The trigger was an adoption event, and the author declared on 2026-08-21 that this is personal
+research, then confirmed on 2026-08-22 that the freeze goes with the criterion it rested on.
+**Lifting a block does not schedule work:** these five return to the backlog at ordinary priority
+and get done on merit or not at all. Nothing here is now due.)*
 
 ### Errors in the first draft of this document, corrected
 
@@ -136,8 +143,13 @@ adoption unobservable, and the kill criterion is a count — if usage cannot be 
 criterion can never fire, and the project neither succeeds nor stops."* **Withdrawn.** It takes
 adoption as the measure of this project, and adoption is not the measure; the counted kill
 criterion is itself the thing in question, not a fixed point to reason from. Anything that makes
-usage countable is solving for a goal this project does not have. What is undeclared is purpose
-and completion criterion, not distribution — see the P1 in `TODOS.md`. The alternatives below
+usage countable is solving for a goal this project does not have. What was undeclared was purpose
+and completion criterion, not distribution — **purpose declared 2026-08-21: personal research,
+possibly some personal use, finishing after a few more sprints.** In place of a completion test
+there is a time budget, recorded as one. See `TODOS.md`. With the counted criterion retired on
+2026-08-22, the instance model stops being a decision and becomes a consequence, and cloning is
+fine — this time asked and answered, not assumed, which is the correction this document already
+carries once above. The alternatives below
 stay, because they are costings rather than arguments, and they are what to read if distribution
 ever becomes a live question again.
 
@@ -150,26 +162,40 @@ ever becomes a live question again.
 - **F — publish the CLI.** Dismissed by a premise that stated a conclusion as a constraint.
 - **G — do nothing here; run the human gate.**
 
-## Success criteria (replaced)
+## Success criteria (replaced, then WITHDRAWN BY THE AUTHOR 2026-08-22)
 
-Not "the agent fails politely". The only numbers that count: **tenant keys issued to non-author
-humans**, and **documents those humans edited**. Today both are zero.
+~~Not "the agent fails politely". The only numbers that count: **tenant keys issued to non-author
+humans**, and **documents those humans edited**. Today both are zero.~~
 
-**CONTRADICTION, RECORDED 2026-08-20 — not resolved here.** The section above, the freeze gate
-at "Frozen until a non-author human has used a document", and the reason Approach C was cut
-("it served an audience the kill criterion does not count") all take **adoption as the measure
-of this project**. The author has since stated it is not: this is a theoretical exercise, not a
-product looking for users, and anything that makes usage countable is solving for a goal the
-project does not have. So this document and the P1 in `TODOS.md` now disagree about what
-success is.
+**CONTRADICTION RECORDED 2026-08-20 — RESOLVED BY THE AUTHOR 2026-08-22.** The criteria above,
+the freeze gate at "Frozen until a non-author human has used a document", and the reason Approach
+C was cut ("it served an audience the kill criterion does not count") all took **adoption as the
+measure of this project**. `TODOS.md` said at P1 that it is not. Both sides were left standing,
+unsettled by precedence, recency or specificity, until the person whose call it was made it.
 
-Both are left standing on purpose. Two design documents that disagree get the disagreement
-written down, never settled by which one is newer or more specific — the count-based criterion
-is not obviously wrong, it is *undecided*, and quietly deleting it here would be making the
-call this branch exists to avoid making. What is undeclared is purpose and completion
-criterion; once those are written down, these criteria either follow from them or are replaced
-by them. Until then, do not act on the numbers above and do not invent replacements for them.
+- **2026-08-21, purpose**, in full: *"This is for personal research, and maybe, some personal
+  use, I will finish it after a few more sprints."*
+- **2026-08-22, consequences**, asked directly with the alternative of leaving them standing:
+  the kill criterion is retired, these criteria are withdrawn, and the freeze is lifted.
 
+Nothing counting anything replaces them. There is no audience this project is trying to acquire.
+Two consequences worth stating so nobody re-derives them:
+
+- **Do not invent replacement metrics.** Anything that makes usage countable is solving for a
+  goal this project does not have.
+- **The instance model stops being a decision.** It was only ever load-bearing as a way of
+  counting users. For personal research, cloning is fine.
+
+What stands in place of a completion test is a time budget: a few more sprints. Recorded as a
+budget rather than a metric, because it is one.
+
+**A draft on 2026-08-21 struck these criteria and captioned it "withdrawn by the author" before
+the author had been asked.** They had answered a question about purpose and said nothing about
+these numbers. Adversarial review caught it. That draft was the same move this document already
+carries a correction for — asserting as settled something nobody had settled — and it is worth
+the reader's attention that the guard against it is a rule someone has now broken twice and been
+caught by twice. Substituting the writer's inference for the author's authority does not resolve
+a contradiction; it hides one.
 ## The assignment
 
 Two experiments, both cheap, both unrun:

@@ -220,6 +220,12 @@ hardening. Both strategy voices called that ordering backwards: it is the first 
 non-author human reads, and the kill criterion counts non-author humans. It ships here, with
 the Done button removal, in one design review of one chrome surface.
 
+*(2026-08-22: the second half of that rationale is void — the kill criterion was retired by the
+author, and counts nobody. **The decision stands and is not revisited.** It rests on the first
+half, which nothing touches: this is the first sentence a person who did not build the system
+reads, and one such person reported it. A consent disclosure is owed to whoever reads it, not to
+a metric — which is why the shipped decision outlives the argument that happened to carry it.)*
+
 **Two of the documentation items become `warnings` codes.** The plan diagnosed that the author
 cannot self-detect the white canvas, then prescribed a paragraph in a manual read once before
 any HTML is written. That is the same remedy class as `$HOST` and the CLI-in-hints. `warnings`
