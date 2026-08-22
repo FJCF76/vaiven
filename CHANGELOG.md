@@ -2,6 +2,61 @@
 
 All notable changes to Vaivén are recorded here. Versions are `MAJOR.MINOR.PATCH.MICRO`.
 
+## [0.3.6.0] - 2026-08-22
+
+The ceiling this project actually has, reviewed and written down.
+
+### Added
+
+- **`docs/designs/documents-dont-accumulate.md`** — the reviewed design for the one backlog item
+  that gets worse as the product gets more useful. A document is one file, regenerated whole, with
+  no modules and no tests; version 1 is a superpower and version 9 is unverifiable. The principle
+  the design applies throughout: **a component is code that has stopped changing.**
+
+  Two tells, both verified rather than asserted. `state_versions` exists at `schema.sql:94` with
+  its own prune index while `doc_content` at `:68` carries only a counter — the data is protected
+  and the code that renders it is not. And `guide.md:160-232` teaches hand-rolled list
+  reconciliation across 47 lines and three warnings, for failures line 214 describes as looking
+  "like browser bugs" — a missing abstraction maintained as prose, in the most-churned
+  non-release file of the last 30 days.
+
+  Four items, reordered by review to **1 → 3 → 2 → 4**: author in modules; content as releases;
+  candidate/promote validation; runtime components.
+
+### Changed
+
+- **Publishing validation will not run on the server.** The brief proposed rendering new content
+  headless on `PUT /content`. That would execute untrusted, model-authored JavaScript on the host
+  holding the database and every tenant key, inverting the premise the two-origin sandbox exists
+  to enforce — and it collides with a service that has no runtime dependencies by design,
+  `MemoryMax=768M`, and `RestrictNamespaces=true` blocking Chromium's own sandbox. Validation
+  moves to the sandboxed iframe the shell already owns, with candidate/promote semantics.
+
+  That choice reorders the plan: candidate and active are only meaningful with an active pointer,
+  so content releases become a **prerequisite** of validation rather than a follow-on.
+
+- **`content_version` becomes a promotion-only activation counter.** Bumping it when a candidate
+  is created is the natural implementation and rebuilds the A8 stale-ETag bug exactly: a shell
+  polling during the pending window caches the old body under the candidate's future ETag,
+  promotion becomes unobservable, and the open page runs the old application forever.
+
+- **Runtime components return controllers over author-owned DOM, never nodes.** A component that
+  creates DOM has already chosen element types, nesting and order, and therefore semantics and
+  accessibility. Styling freedom is not structural freedom.
+
+- **The authoring layout is one starter scaffold, not the canonical anatomy**, and declared
+  assertions are **mandatory rather than optional** — without them validation means only "did not
+  throw uncaught", which a `try`/`catch` satisfies, and the candidate can spoof `ready`.
+
+### Notes
+
+Six questions are recorded as **open**, deliberately. An earlier draft of the design doc claimed
+"NO UNRESOLVED DECISIONS" while its own text carried four unresolved "or"s; a fidelity pass caught
+that along with a storage-model contradiction and amendment identifiers copied from
+`vaiven-v1.md` that collided with the new document's own numbering. The most important open
+question is what authenticates a validation callback, since the candidate is currently the thing
+certifying itself.
+
 ## [0.3.5.0] - 2026-08-22
 
 Two backlog entries, one of which is a bug nobody could have seen from the code alone.
