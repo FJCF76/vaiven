@@ -78,8 +78,13 @@ JSON-escaping a whole document:
 ```bash
 curl -s -X PUT "https://vaiven.owncompute.com/api/docs/d_YOUR_DOCUMENT_ID/content" \
   -H "Authorization: Bearer YOUR_TENANT_KEY" -H 'content-type: text/html' \
-  --data-binary @app.html
+  --data-binary @dist.html
 ```
+
+**One file is published; that says nothing about how many you author.** The filename above is
+just a filename: a form you write once stays one file and publishes exactly as it is. For
+anything you will republish, assemble that one file from sources you keep, so the parts that
+already work stop being rewritten: `https://vaiven.owncompute.com/guide/authoring.md`.
 
 ## 2. Write the app
 
@@ -386,8 +391,8 @@ back off the mint response rather than assuming. More than 10 changes to one arr
 single write collapse into one summary event, so a bulk rewrite reads as
 `items: 3 items → 12 items` rather than as forty lines.
 
-There are longer versions of the error, limit and app-mode pages at
-`https://vaiven.owncompute.com/guide/errors.md`, `https://vaiven.owncompute.com/guide/limits.md` and `https://vaiven.owncompute.com/guide/app-mode.md`. You should
+There are longer versions of the error, limit, app-mode and authoring pages at
+`https://vaiven.owncompute.com/guide/errors.md`, `https://vaiven.owncompute.com/guide/limits.md`, `https://vaiven.owncompute.com/guide/app-mode.md` and `https://vaiven.owncompute.com/guide/authoring.md`. You should
 not need them: everything required to build, publish and recover is on this page.
 
 ## Every route
